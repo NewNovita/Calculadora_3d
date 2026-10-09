@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 const STORAGE_KEY_PRINTERS = 'calc3d_printer_profiles_v1';
+const STORAGE_KEY_FILAMENTS = 'calc3d_filament_inventory_v1';
 const STORAGE_KEY_THEME = 'calc3d_theme_mode_v1';
 
 const DEFAULT_PRINTER_PROFILES = [
@@ -9,14 +10,47 @@ const DEFAULT_PRINTER_PROFILES = [
     name: 'Estándar (Ej. Ender 3)',
     watts: 150,
     wearRate: 0.2,
-    isDefault: true,
+    printerCost: 250,
+    annualMaintenance: 40,
+    lifespanYears: 3,
+    uptimePercent: 45,
   },
   {
     id: 'bambu-x1c',
     name: 'Alta Velocidad (Ej. Bambu Lab X1C)',
     watts: 350,
     wearRate: 0.5,
-    isDefault: true,
+    printerCost: 1200,
+    annualMaintenance: 120,
+    lifespanYears: 3,
+    uptimePercent: 60,
+  },
+];
+
+const DEFAULT_FILAMENT_INVENTORY = [
+  {
+    id: 'fil-pla-std',
+    name: 'PLA Estándar (Bobina 1kg)',
+    type: 'FDM',
+    costPerKg: 22,
+  },
+  {
+    id: 'fil-petg-pro',
+    name: 'PETG Técnico (Bobina 1kg)',
+    type: 'FDM',
+    costPerKg: 25,
+  },
+  {
+    id: 'fil-abs-asa',
+    name: 'ABS / ASA Ingenieril (Bobina 1kg)',
+    type: 'FDM',
+    costPerKg: 28,
+  },
+  {
+    id: 'fil-resina-std',
+    name: 'Resina UV Estándar (Botella 1L)',
+    type: 'SLA',
+    costPerKg: 35,
   },
 ];
 
@@ -80,7 +114,6 @@ async function loadPdfLibraries() {
 
 /**
  * Dibuja de forma síncrona el gráfico de anillo en un elemento <canvas>.
- * Soporta tema claro (para el PDF formal o Modo Claro) y tema oscuro (para Modo Oscuro).
  */
 function drawDoughnutCanvas(
   canvas,
@@ -93,7 +126,7 @@ function drawDoughnutCanvas(
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const dpr = 2;
-  const size = 140;
+  const size = 136;
   canvas.width = size * dpr;
   canvas.height = size * dpr;
   canvas.style.width = `${size}px`;
@@ -105,10 +138,9 @@ function drawDoughnutCanvas(
 
   const cx = size / 2;
   const cy = size / 2;
-  const radius = 52;
-  const lineWidth = 18;
+  const radius = 50;
+  const lineWidth = 17;
 
-  // Fondo del anillo
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.strokeStyle = isDark ? '#334155' : '#e2e8f0';
@@ -130,15 +162,14 @@ function drawDoughnutCanvas(
     });
   }
 
-  // Texto central
   ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
-  ctx.font = '600 9px Inter, sans-serif';
+  ctx.font = '600 8.5px Inter, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(centerLabel, cx, cy - 4);
 
   ctx.fillStyle = isDark ? '#f8fafc' : '#0f172a';
-  ctx.font = '700 13px monospace';
-  ctx.fillText(`${currency}${total.toFixed(2)}`, cx, cy + 12);
+  ctx.font = '700 12px monospace';
+  ctx.fillText(`${currency}${total.toFixed(2)}`, cx, cy + 11);
 
   ctx.restore();
 }
@@ -162,51 +193,59 @@ function CostDoughnutChart({
   }, [items, total, currency, isDark, activeRef, centerLabel]);
 
   return (
-    <div className="flex items-center justify-center">
-      <canvas ref={activeRef} width={140} height={140} />
+    <div className="flex items-center justify-center shrink-0">
+      <canvas ref={activeRef} width={136} height={136} />
     </div>
   );
 }
 
 /**
- * Tarjeta contenedora para secciones del formulario (Estilo SaaS Corporativo Stripe / Vercel)
+ * Contenedor de sección estilo SaaS Corporativo (Stripe / Vercel / 3DPCC PRO)
  */
 function SectionCard({ step, title, subtitle, badge, rightAction, accent = 'emerald', children }) {
-  const accentMap = {
-    blue: 'bg-blue-50/80 text-blue-600 border-blue-200/80 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20',
+  const badgeColors = {
     emerald:
-      'bg-emerald-50/80 text-emerald-600 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
+      'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
+    blue: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20',
     indigo:
-      'bg-indigo-50/80 text-indigo-600 border-indigo-200/80 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
+      'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
     amber:
-      'bg-amber-50/80 text-amber-600 border-amber-200/80 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-    rose: 'bg-rose-50/80 text-rose-600 border-rose-200/80 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
+      'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
+    rose: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
   };
 
   return (
-    <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-gray-200 dark:border-gray-800 p-6 sm:p-8 shadow-sm hover:shadow-md transition-all duration-200">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-gray-200 dark:border-gray-800 p-6 sm:p-7 shadow-sm hover:shadow-md transition-all duration-200">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3.5">
           <div
-            className={`w-9 h-9 rounded-xl border flex items-center justify-center font-mono font-bold text-sm shadow-xs ${
-              accentMap[accent] || accentMap.emerald
+            className={`w-8 h-8 rounded-lg border flex items-center justify-center font-mono font-bold text-sm shadow-sm ${
+              badgeColors[accent] || badgeColors.emerald
             }`}
           >
             {step}
           </div>
           <div>
-            <h2 className="text-base sm:text-lg font-bold tracking-tight text-gray-900 dark:text-slate-100">
+            <h2 className="text-base font-bold tracking-tight text-gray-900 dark:text-slate-100">
               {title}
             </h2>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">{subtitle}</p>
+            {subtitle && (
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">{subtitle}</p>
+            )}
           </div>
         </div>
-        {badge && (
-          <span className="text-[11px] font-mono font-semibold uppercase px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
-            {badge}
-          </span>
-        )}
-        {rightAction}
+        <div className="flex items-center gap-2">
+          {badge && (
+            <span
+              className={`text-[11px] font-mono font-semibold uppercase px-3 py-1 rounded-full border ${
+                badgeColors[accent] || badgeColors.emerald
+              }`}
+            >
+              {badge}
+            </span>
+          )}
+          {rightAction}
+        </div>
       </div>
       {children}
     </div>
@@ -214,57 +253,69 @@ function SectionCard({ step, title, subtitle, badge, rightAction, accent = 'emer
 }
 
 /**
- * Campo numérico estilizado con padding-right amplio y dinámico
- * para evitar que los números o spin-buttons se superpongan con el sufijo.
+ * Input numérico con espaciado anti-solapamiento y estilo SaaS
  */
-function NumberField({ label, value, onChange, prefix, suffix, step = '0.1', min = '0' }) {
-  // Calcula un padding-right holgado según la longitud del texto del sufijo
+function NumberField({
+  label,
+  value,
+  onChange,
+  prefix,
+  suffix,
+  min = 0,
+  max,
+  step = 'any',
+  hint,
+}) {
   const getRightPaddingClass = () => {
-    if (!suffix) return 'pr-4';
-    if (suffix.length >= 6) return 'pr-24'; // Ej. "por hora", "/ 1000g", "/ 1000ml", "gramos"
-    if (suffix.length >= 3) return 'pr-16'; // Ej. "hrs", "min", "kWh"
-    return 'pr-14'; // Ej. "/h", "W", "%", "ml"
+    if (!suffix) return 'pr-3.5';
+    if (suffix.length <= 2) return 'pr-14';
+    if (suffix.length <= 4) return 'pr-16';
+    return 'pr-24';
   };
 
-  // Ajusta el padding-left si el prefijo es "S/" (2 caracteres) o "$" (1 carácter)
   const getLeftPaddingClass = () => {
-    if (!prefix) return 'pl-4';
+    if (!prefix) return 'pl-3.5';
     return prefix.length > 1 ? 'pl-10' : 'pl-8';
   };
 
   return (
     <div>
       {label && (
-        <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-2">
+        <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-1.5">
           {label}
         </label>
       )}
-      <div className="relative flex items-center">
+      <div className="relative">
         {prefix && (
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-400 font-mono text-xs font-semibold pointer-events-none select-none">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-400 font-mono text-sm font-medium pointer-events-none select-none">
             {prefix}
           </span>
         )}
         <input
           type="number"
           min={min}
+          max={max}
           step={step}
           value={value}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          className={`w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 py-2.5 text-sm font-mono font-medium text-gray-900 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all duration-200 ${getLeftPaddingClass()} ${getRightPaddingClass()}`}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            onChange(isNaN(val) ? 0 : val);
+          }}
+          className={`w-full rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-700 py-2.5 ${getLeftPaddingClass()} ${getRightPaddingClass()} text-sm font-mono text-gray-900 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 dark:focus:border-emerald-400 transition-all duration-200`}
         />
         {suffix && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-slate-400 font-mono font-medium pointer-events-none select-none bg-gray-100/90 dark:bg-slate-800/90 px-1.5 py-0.5 rounded-md">
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-500 dark:text-slate-400 font-mono font-medium pointer-events-none select-none bg-gray-100 dark:bg-slate-800/90 px-2 py-0.5 rounded-md">
             {suffix}
           </span>
         )}
       </div>
+      {hint && <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-1">{hint}</p>}
     </div>
   );
 }
 
 /**
- * Modal para crear y gestionar perfiles de impresoras
+ * Modal para Gestionar Perfiles de Impresoras (localStorage)
  */
 function PrinterManagerModal({
   isOpen,
@@ -277,27 +328,31 @@ function PrinterManagerModal({
 }) {
   const [name, setName] = useState('');
   const [watts, setWatts] = useState('');
-  const [wearRate, setWearRate] = useState('');
+  const [printerCostInput, setPrinterCostInput] = useState('600');
+  const [maintenanceInput, setMaintenanceInput] = useState('60');
 
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const parsedWatts = parseFloat(watts);
-    const parsedWear = parseFloat(wearRate);
-    if (!name.trim() || isNaN(parsedWatts) || parsedWatts < 0 || isNaN(parsedWear) || parsedWear < 0) {
+    const parsedCost = parseFloat(printerCostInput) || 500;
+    const parsedMaint = parseFloat(maintenanceInput) || 50;
+    if (!name.trim() || isNaN(parsedWatts) || parsedWatts < 0) {
       return;
     }
     onAddProfile({
       id: `printer-${Date.now()}`,
       name: name.trim(),
       watts: parsedWatts,
-      wearRate: parsedWear,
-      isDefault: false,
+      wearRate: 0.25,
+      printerCost: parsedCost,
+      annualMaintenance: parsedMaint,
+      lifespanYears: 3,
+      uptimePercent: 50,
     });
     setName('');
     setWatts('');
-    setWearRate('');
     onClose();
   };
 
@@ -309,7 +364,7 @@ function PrinterManagerModal({
       }}
     >
       <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 p-6 sm:p-8 shadow-2xl">
-        <div className="flex items-center justify-between pb-5 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-gray-800">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white">
               Gestionar Perfiles de Impresoras
@@ -321,7 +376,7 @@ function PrinterManagerModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors duration-200"
+            className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
           >
             ✕
           </button>
@@ -338,7 +393,7 @@ function PrinterManagerModal({
                   No hay perfiles de impresora registrados
                 </p>
                 <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
-                  Agrega un perfil usando el formulario inferior o recarga la página para restaurar los perfiles por defecto.
+                  Agrega un perfil abajo o recarga la página para restaurar los perfiles por defecto.
                 </p>
               </div>
             ) : (
@@ -353,12 +408,17 @@ function PrinterManagerModal({
                       Consumo:{' '}
                       <span className="text-amber-600 dark:text-amber-400 font-semibold">
                         {p.watts}W
-                      </span>{' '}
-                      • Desgaste:{' '}
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                        {currency}
-                        {Number(p.wearRate).toFixed(2)}/h
                       </span>
+                      {p.printerCost ? (
+                        <>
+                          {' '}
+                          • Máquina:{' '}
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                            {currency}
+                            {Number(p.printerCost).toFixed(0)}
+                          </span>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -368,16 +428,15 @@ function PrinterManagerModal({
                         onSelectProfile(p.id);
                         onClose();
                       }}
-                      className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25 dark:border-emerald-500/30 transition-colors duration-200"
+                      className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 transition-colors"
                     >
                       Usar
                     </button>
                     <button
                       type="button"
                       onClick={() => onDeleteProfile(p.id)}
-                      className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15 transition-colors duration-200 font-bold"
+                      className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15 transition-colors font-bold"
                       title="Eliminar perfil"
-                      aria-label={`Eliminar perfil ${p.name}`}
                     >
                       ✕
                     </button>
@@ -390,7 +449,7 @@ function PrinterManagerModal({
 
         <form
           onSubmit={handleSubmit}
-          className="pt-5 border-t border-gray-100 dark:border-gray-800 space-y-4"
+          className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4"
         >
           <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
             Agregar Nueva Impresora
@@ -404,39 +463,49 @@ function PrinterManagerModal({
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ej. Prusa MK4 / Creality K1 / Elegoo Saturn"
-              className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3.5 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all duration-200"
+              placeholder="Ej. Prusa MK4 / Bambu Lab P1S / Elegoo Saturn"
+              className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3.5 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
-                Consumo medio (Watts)
+                Consumo (W)
               </label>
               <input
                 type="number"
                 min="1"
-                step="1"
                 required
                 value={watts}
                 onChange={(e) => setWatts(e.target.value)}
-                placeholder="Ej. 220"
-                className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3.5 py-2.5 text-sm font-mono text-gray-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all duration-200"
+                placeholder="220"
+                className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
-                Desgaste por hora ({currency}/h)
+                Costo ({currency})
               </label>
               <input
                 type="number"
                 min="0"
-                step="0.01"
-                required
-                value={wearRate}
-                onChange={(e) => setWearRate(e.target.value)}
-                placeholder="Ej. 0.35"
-                className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3.5 py-2.5 text-sm font-mono text-gray-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all duration-200"
+                value={printerCostInput}
+                onChange={(e) => setPrinterCostInput(e.target.value)}
+                placeholder="600"
+                className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                Mant. Anual ({currency})
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={maintenanceInput}
+                onChange={(e) => setMaintenanceInput(e.target.value)}
+                placeholder="60"
+                className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
               />
             </div>
           </div>
@@ -444,15 +513,15 @@ function PrinterManagerModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 transition-colors duration-200"
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all duration-200 shadow-sm hover:shadow-md"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm transition-all"
             >
-              + Guardar Perfil
+              + Guardar Impresora
             </button>
           </div>
         </form>
@@ -462,11 +531,205 @@ function PrinterManagerModal({
 }
 
 /**
- * Componente Principal: Calculadora de Costos de Impresión 3D
+ * Modal de Inventario de Filamentos / Resinas (localStorage)
+ */
+function FilamentInventoryModal({
+  isOpen,
+  onClose,
+  filaments,
+  currency,
+  onAddFilament,
+  onDeleteFilament,
+  onUseFilament,
+}) {
+  const [name, setName] = useState('');
+  const [type, setType] = useState('FDM');
+  const [costPerKg, setCostPerKg] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const parsedCost = parseFloat(costPerKg);
+    if (!name.trim() || isNaN(parsedCost) || parsedCost < 0) return;
+
+    onAddFilament({
+      id: `fil-${Date.now()}`,
+      name: name.trim(),
+      type,
+      costPerKg: parsedCost,
+    });
+    setName('');
+    setCostPerKg('');
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 dark:bg-slate-950/75 backdrop-blur-sm transition-opacity"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 p-6 sm:p-8 shadow-2xl">
+        <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-gray-800">
+          <div>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">
+              Inventario de Filamentos y Resinas
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+              Catálogo guardado en tu navegador (localStorage) para selección rápida
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="my-5">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-3">
+            Materiales en Inventario ({filaments.length})
+          </h4>
+          <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
+            {filaments.length === 0 ? (
+              <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-950/60 border border-dashed border-gray-200 dark:border-gray-800 text-center">
+                <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">
+                  Inventario vacío
+                </p>
+                <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
+                  Registra un filamento o resina abajo, o recarga la página para restaurar los materiales por defecto.
+                </p>
+              </div>
+            ) : (
+              filaments.map((f) => (
+                <div
+                  key={f.id}
+                  className="flex items-center justify-between p-3.5 rounded-xl bg-gray-50 dark:bg-slate-950/60 border border-gray-200/80 dark:border-gray-800"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-gray-900 dark:text-white">
+                        {f.name}
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-500/30">
+                        {f.type}
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-mono text-gray-500 dark:text-slate-400 mt-0.5">
+                      Costo por {f.type === 'SLA' ? 'Litro' : 'Kg'}:{' '}
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                        {currency}
+                        {Number(f.costPerKg).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUseFilament(f);
+                        onClose();
+                      }}
+                      className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 transition-colors"
+                    >
+                      + Añadir al proyecto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteFilament(f.id)}
+                      className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15 transition-colors font-bold"
+                      title="Eliminar material del inventario"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4"
+        >
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+            Registrar Nuevo Filamento / Resina
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+            <div className="sm:col-span-6">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                Nombre / Marca / Color
+              </label>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej. eSUN PLA+ Negro"
+                className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3.5 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+              />
+            </div>
+            <div className="sm:col-span-3">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                Tipo
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+              >
+                <option value="FDM">FDM (1kg)</option>
+                <option value="SLA">SLA (1L)</option>
+              </select>
+            </div>
+            <div className="sm:col-span-3">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1.5">
+                Precio ({currency})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                required
+                value={costPerKg}
+                onChange={(e) => setCostPerKg(e.target.value)}
+                placeholder="22.00"
+                className="w-full rounded-xl bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 transition-colors"
+            >
+              Cerrar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm transition-all"
+            >
+              + Guardar en Inventario
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Componente Principal: Calculadora de Costos de Impresión 3D (Nivel 3DPCC PRO SaaS)
  */
 export default function CalculadoraCostos3D() {
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
+  const extrasDropdownRef = useRef(null);
 
   // Referencia exacta al contenedor del presupuesto PDF (#pdf-budget-container)
   const pdfContainerRef = useRef(null);
@@ -493,7 +756,7 @@ export default function CalculadoraCostos3D() {
     }
   }, [darkMode]);
 
-  // Perfiles de Impresora (con persistencia en localStorage)
+  // Perfiles de Impresora (localStorage)
   const [printerProfiles, setPrinterProfiles] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_PRINTERS);
@@ -502,13 +765,44 @@ export default function CalculadoraCostos3D() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {
-      console.warn('Error cargando perfiles desde localStorage:', e);
+      console.warn('Error cargando perfiles de impresora:', e);
     }
     return DEFAULT_PRINTER_PROFILES;
   });
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_PRINTERS, JSON.stringify(printerProfiles));
+    } catch (e) {
+      console.warn('Error guardando perfiles de impresora:', e);
+    }
+  }, [printerProfiles]);
+
+  // Inventario de Filamentos (localStorage)
+  const [filamentInventory, setFilamentInventory] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_FILAMENTS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Error cargando inventario de filamentos:', e);
+    }
+    return DEFAULT_FILAMENT_INVENTORY;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_FILAMENTS, JSON.stringify(filamentInventory));
+    } catch (e) {
+      console.warn('Error guardando inventario de filamentos:', e);
+    }
+  }, [filamentInventory]);
+
   const [selectedPrinterId, setSelectedPrinterId] = useState('ender3-std');
   const [isPrinterModalOpen, setIsPrinterModalOpen] = useState(false);
+  const [isFilamentModalOpen, setIsFilamentModalOpen] = useState(false);
 
   // Notificación amigable (Toast)
   const [notification, setNotification] = useState(null);
@@ -520,74 +814,185 @@ export default function CalculadoraCostos3D() {
     }, 4000);
   };
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PRINTERS, JSON.stringify(printerProfiles));
-    } catch (e) {
-      console.warn('Error guardando perfiles en localStorage:', e);
-    }
-  }, [printerProfiles]);
-
-  // Estados del Formulario
+  // 1. Proyecto, Divisa y Lote (Batch)
   const [currency, setCurrency] = useState('$');
   const [partName, setPartName] = useState('Soporte Articulado Pro');
   const [technology, setTechnology] = useState('FDM'); // 'FDM' | 'SLA'
-  const [modelImage, setModelImage] = useState(null); // Base64 DataURL del render 3D
+  const [batchQuantity, setBatchQuantity] = useState(1);
+  const [modelImage, setModelImage] = useState(null);
 
-  // 2. Material
-  const [materialCost, setMaterialCost] = useState(22);
-  const [materialUsed, setMaterialUsed] = useState(85);
+  // 2. Multimaterial (Permite múltiples materiales ej. PLA + PETG en el mismo proyecto)
+  const [materialsList, setMaterialsList] = useState([
+    {
+      id: 1,
+      filamentId: 'fil-pla-std',
+      name: 'PLA Estándar (Bobina 1kg)',
+      costPerKg: 22,
+      weightUsed: 85,
+    },
+  ]);
 
-  // 3. Tiempos y Mano de Obra
+  // 3. Tiempos de Impresión y Mano de Obra (por unidad)
   const [printHours, setPrintHours] = useState(4);
   const [printMinutes, setPrintMinutes] = useState(30);
   const [laborMinutes, setLaborMinutes] = useState(20);
-  const [laborRate, setLaborRate] = useState(10);
 
-  // 4. Desgaste y Electricidad
-  const [machineWearRate, setMachineWearRate] = useState(0.2);
-  const [powerWatts, setPowerWatts] = useState(150);
-  const [electricityRate, setElectricityRate] = useState(0.18);
-
-  // 5. Extras Dinámicos e Impuestos
+  // 4. Extras con Botón Desplegable "Add item ▼" (Hardware & Packaging) + Impuestos
   const [extrasList, setExtrasList] = useState([
-    { id: 1, nombre: 'Caja premium', costo: 1.5 },
+    { id: 1, categoria: 'Hardware', nombre: 'Tornillería e Insertos M3', costo: 0.8 },
+    { id: 2, categoria: 'Packaging', nombre: 'Caja de Embalaje', costo: 0.7 },
   ]);
-  const [extraNombreInput, setExtraNombreInput] = useState('');
-  const [extraCostoInput, setExtraCostoInput] = useState('');
+  const [isAddExtraMenuOpen, setIsAddExtraMenuOpen] = useState(false);
   const [taxPercent, setTaxPercent] = useState(16);
 
-  // Estrategia de Precios & Opciones Granulares de Exportación PDF
+  // Cerrar menú desplegable "Add item ▼" al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (extrasDropdownRef.current && !extrasDropdownRef.current.contains(e.target)) {
+        setIsAddExtraMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // 5. Panel "Advanced Production Settings" (Acordeón)
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(true);
+  const [laborRate, setLaborRate] = useState(10); // Tarifa de Mano de Obra ($/hr)
+  const [materialEfficiency, setMaterialEfficiency] = useState(1.1); // Multiplicador de desperdicio (ej. 1.1 = +10%)
+  const [printerCost, setPrinterCost] = useState(250); // Costo de la Impresora ($)
+  const [annualMaintenance, setAnnualMaintenance] = useState(40); // Mantenimiento Anual ($)
+  const [printerLifespanYears, setPrinterLifespanYears] = useState(3); // Vida útil (años)
+  const [uptimePercent, setUptimePercent] = useState(45); // Uptime (%)
+  const [powerWatts, setPowerWatts] = useState(150); // Consumo de Energía (W)
+  const [electricityRate, setElectricityRate] = useState(0.18); // Tarifa Eléctrica ($/kWh)
+  const [bufferFactor, setBufferFactor] = useState(1.3); // Factor de Amortiguación (ej. 1.3)
+
+  // Estrategia de Precios (Margen Bruto Real) & Opciones PDF
   const [selectedTier, setSelectedTier] = useState('40');
-  const [customMargin, setCustomMargin] = useState(100);
+  const [customMargin, setCustomMargin] = useState(50);
   const [pdfSettings, setPdfSettings] = useState(DEFAULT_PDF_SETTINGS);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
 
-  const handleAddExtra = () => {
-    const trimmedName = extraNombreInput.trim();
-    const parsedCost = parseFloat(extraCostoInput);
-    if (!trimmedName || isNaN(parsedCost) || parsedCost < 0) {
-      showToast(
-        'Datos incompletos',
-        'Por favor ingresa el nombre del extra y un costo válido.',
-        'error'
-      );
-      return;
-    }
+  // Handlers de Multimaterial
+  const handleAddMaterialRow = (presetFilament = null) => {
+    const defaultFil = presetFilament || filamentInventory[0] || {
+      id: 'custom',
+      name: 'Material Personalizado',
+      costPerKg: 22,
+    };
+    setMaterialsList((prev) => [
+      ...prev,
+      {
+        id: Date.now() + Math.random(),
+        filamentId: defaultFil.id || 'custom',
+        name: defaultFil.name || 'Nuevo Material',
+        costPerKg: Number(defaultFil.costPerKg) || 22,
+        weightUsed: 25,
+      },
+    ]);
+  };
+
+  const handleUpdateMaterialRow = (rowId, field, value) => {
+    setMaterialsList((prev) =>
+      prev.map((row) => {
+        if (row.id !== rowId) return row;
+        if (field === 'filamentId') {
+          if (value === 'custom') {
+            return { ...row, filamentId: 'custom' };
+          }
+          const found = filamentInventory.find((f) => f.id === value);
+          if (found) {
+            return {
+              ...row,
+              filamentId: found.id,
+              name: found.name,
+              costPerKg: Number(found.costPerKg),
+            };
+          }
+        }
+        return { ...row, [field]: value };
+      })
+    );
+  };
+
+  const handleRemoveMaterialRow = (rowId) => {
+    setMaterialsList((prev) => prev.filter((row) => row.id !== rowId));
+  };
+
+  // Handlers de Inventario de Filamentos
+  const handleAddFilamentInventory = (newFil) => {
+    setFilamentInventory((prev) => [...prev, newFil]);
+    showToast('Material registrado', `Se añadió "${newFil.name}" al inventario.`);
+  };
+
+  const handleDeleteFilamentInventory = (filId) => {
+    setFilamentInventory((prev) => prev.filter((f) => f.id !== filId));
+    showToast('Material eliminado', 'Se eliminó el material del inventario.');
+  };
+
+  // Handlers de Extras Desplegable ("Add item ▼" -> Hardware | Packaging)
+  const handleAddExtraByCategory = (categoria) => {
     setExtrasList((prev) => [
       ...prev,
       {
         id: Date.now() + Math.random(),
-        nombre: trimmedName,
-        costo: parsedCost,
+        categoria,
+        nombre: categoria === 'Hardware' ? 'Tornillos / Insertos' : 'Caja / Embalaje protector',
+        costo: categoria === 'Hardware' ? 0.5 : 1.0,
       },
     ]);
-    setExtraNombreInput('');
-    setExtraCostoInput('');
+    setIsAddExtraMenuOpen(false);
+  };
+
+  const handleUpdateExtraRow = (id, field, value) => {
+    setExtrasList((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+    );
   };
 
   const handleRemoveExtra = (id) => {
     setExtrasList((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // Handlers de Impresora
+  const handleSelectPrinterProfile = (profileId) => {
+    setSelectedPrinterId(profileId);
+    const found = printerProfiles.find((p) => p.id === profileId);
+    if (found) {
+      setPowerWatts(Number(found.watts) || 150);
+      if (found.printerCost !== undefined) setPrinterCost(Number(found.printerCost));
+      if (found.annualMaintenance !== undefined)
+        setAnnualMaintenance(Number(found.annualMaintenance));
+      if (found.lifespanYears !== undefined) setPrinterLifespanYears(Number(found.lifespanYears));
+      if (found.uptimePercent !== undefined) setUptimePercent(Number(found.uptimePercent));
+    }
+  };
+
+  const handleAddPrinterProfile = (newProfile) => {
+    setPrinterProfiles((prev) => [...prev, newProfile]);
+    setSelectedPrinterId(newProfile.id);
+    setPowerWatts(newProfile.watts);
+    if (newProfile.printerCost !== undefined) setPrinterCost(newProfile.printerCost);
+    if (newProfile.annualMaintenance !== undefined)
+      setAnnualMaintenance(newProfile.annualMaintenance);
+    showToast('Impresora agregada', `Se creó y activó el perfil "${newProfile.name}".`);
+  };
+
+  const handleDeletePrinterProfile = (profileId) => {
+    setPrinterProfiles((prev) => {
+      const updated = prev.filter((p) => p.id !== profileId);
+      if (updated.length === 0) {
+        setSelectedPrinterId('custom');
+      } else if (selectedPrinterId === profileId) {
+        const first = updated[0];
+        setSelectedPrinterId(first.id);
+        setPowerWatts(first.watts);
+        if (first.printerCost !== undefined) setPrinterCost(first.printerCost);
+      }
+      return updated;
+    });
+    showToast('Perfil eliminado', 'El perfil de impresora fue eliminado correctamente.');
   };
 
   const togglePdfSetting = (key) => {
@@ -608,7 +1013,7 @@ export default function CalculadoraCostos3D() {
     });
   };
 
-  // Subida de Imagen (guardada como Base64 para compatibilidad total con html2canvas)
+  // Subida de Imagen
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -624,38 +1029,7 @@ export default function CalculadoraCostos3D() {
     reader.readAsDataURL(file);
   };
 
-  const handleSelectPrinterProfile = (profileId) => {
-    setSelectedPrinterId(profileId);
-    const found = printerProfiles.find((p) => p.id === profileId);
-    if (found) {
-      setPowerWatts(found.watts);
-      setMachineWearRate(found.wearRate);
-    }
-  };
-
-  const handleAddPrinterProfile = (newProfile) => {
-    setPrinterProfiles((prev) => [...prev, newProfile]);
-    setSelectedPrinterId(newProfile.id);
-    setPowerWatts(newProfile.watts);
-    setMachineWearRate(newProfile.wearRate);
-    showToast('Impresora agregada', `Se creó y activó el perfil "${newProfile.name}".`);
-  };
-
-  const handleDeletePrinterProfile = (profileId) => {
-    setPrinterProfiles((prev) => {
-      const updated = prev.filter((p) => p.id !== profileId);
-      if (updated.length === 0) {
-        setSelectedPrinterId('custom');
-      } else if (selectedPrinterId === profileId) {
-        setSelectedPrinterId(updated[0].id);
-        setPowerWatts(updated[0].watts);
-        setMachineWearRate(updated[0].wearRate);
-      }
-      return updated;
-    });
-    showToast('Perfil eliminado', 'El perfil de impresora fue eliminado correctamente.');
-  };
-
+  // Guardar / Cargar Proyecto JSON
   const handleSaveProject = () => {
     const rawName = partName.trim() || 'Pieza3D';
     const safeFileName = rawName
@@ -664,23 +1038,28 @@ export default function CalculadoraCostos3D() {
       .replace(/\s+/g, '_');
 
     const projectPayload = {
-      app: '3DPrintCostCalculator',
-      version: '4.2',
+      app: '3DPrintCostCalculatorPro',
+      version: '5.0',
       exportedAt: new Date().toISOString(),
       data: {
         partName: rawName,
         technology,
         currency,
+        batchQuantity,
         selectedPrinterId,
-        materialCost,
-        materialUsed,
+        materialsList,
         printHours,
         printMinutes,
         laborMinutes,
         laborRate,
-        machineWearRate,
+        materialEfficiency,
+        printerCost,
+        annualMaintenance,
+        printerLifespanYears,
+        uptimePercent,
         powerWatts,
         electricityRate,
+        bufferFactor,
         extrasList,
         taxPercent,
         selectedTier,
@@ -715,48 +1094,61 @@ export default function CalculadoraCostos3D() {
         const parsed = JSON.parse(event.target.result);
         const data = parsed.data || parsed;
 
-        if (
-          typeof data !== 'object' ||
-          data === null ||
-          (data.materialCost === undefined && data.partName === undefined)
-        ) {
+        if (typeof data !== 'object' || data === null) {
           throw new Error('Formato de archivo JSON inválido');
         }
 
         if (data.partName !== undefined) setPartName(String(data.partName));
         if (data.technology === 'FDM' || data.technology === 'SLA') setTechnology(data.technology);
         if (data.currency) setCurrency(data.currency === 'S/' ? 'S/' : '$');
+        if (data.batchQuantity !== undefined)
+          setBatchQuantity(Math.max(1, Number(data.batchQuantity) || 1));
         if (data.selectedPrinterId) setSelectedPrinterId(String(data.selectedPrinterId));
-        if (data.materialCost !== undefined) setMaterialCost(Number(data.materialCost));
-        if (data.materialUsed !== undefined) setMaterialUsed(Number(data.materialUsed));
+
+        if (Array.isArray(data.materialsList) && data.materialsList.length > 0) {
+          setMaterialsList(data.materialsList);
+        } else if (data.materialCost !== undefined || data.materialUsed !== undefined) {
+          setMaterialsList([
+            {
+              id: 1,
+              filamentId: 'custom',
+              name: 'Material Importado',
+              costPerKg: Number(data.materialCost) || 22,
+              weightUsed: Number(data.materialUsed) || 85,
+            },
+          ]);
+        }
+
         if (data.printHours !== undefined) setPrintHours(Number(data.printHours));
         if (data.printMinutes !== undefined) setPrintMinutes(Number(data.printMinutes));
         if (data.laborMinutes !== undefined) setLaborMinutes(Number(data.laborMinutes));
         if (data.laborRate !== undefined) setLaborRate(Number(data.laborRate));
-        if (data.machineWearRate !== undefined) setMachineWearRate(Number(data.machineWearRate));
+        if (data.materialEfficiency !== undefined)
+          setMaterialEfficiency(Number(data.materialEfficiency));
+        if (data.printerCost !== undefined) setPrinterCost(Number(data.printerCost));
+        if (data.annualMaintenance !== undefined)
+          setAnnualMaintenance(Number(data.annualMaintenance));
+        if (data.printerLifespanYears !== undefined)
+          setPrinterLifespanYears(Number(data.printerLifespanYears));
+        if (data.uptimePercent !== undefined) setUptimePercent(Number(data.uptimePercent));
         if (data.powerWatts !== undefined) setPowerWatts(Number(data.powerWatts));
         if (data.electricityRate !== undefined) setElectricityRate(Number(data.electricityRate));
+        if (data.bufferFactor !== undefined) setBufferFactor(Number(data.bufferFactor));
+
         if (Array.isArray(data.extrasList)) {
           setExtrasList(
             data.extrasList.map((item, idx) => ({
               id: item.id ?? Date.now() + idx,
+              categoria: item.categoria || 'Hardware',
               nombre: String(item.nombre || 'Extra'),
               costo: Math.max(0, Number(item.costo) || 0),
             }))
           );
-        } else if (data.hardwareCost !== undefined || data.packagingCost !== undefined) {
-          const migrated = [];
-          if (Number(data.hardwareCost) > 0) {
-            migrated.push({ id: 1, nombre: 'Hardware', costo: Number(data.hardwareCost) });
-          }
-          if (Number(data.packagingCost) > 0) {
-            migrated.push({ id: 2, nombre: 'Embalaje', costo: Number(data.packagingCost) });
-          }
-          setExtrasList(migrated);
         }
         if (data.taxPercent !== undefined) setTaxPercent(Number(data.taxPercent));
         if (data.selectedTier) setSelectedTier(String(data.selectedTier));
-        if (data.customMarginInput !== undefined) setCustomMargin(Number(data.customMarginInput));
+        if (data.customMarginInput !== undefined)
+          setCustomMargin(Math.min(99, Math.max(0, Number(data.customMarginInput) || 0)));
         if (data.pdfSettings && typeof data.pdfSettings === 'object') {
           setPdfSettings({ ...DEFAULT_PDF_SETTINGS, ...data.pdfSettings });
         }
@@ -769,7 +1161,7 @@ export default function CalculadoraCostos3D() {
       } catch {
         showToast(
           'Archivo JSON inválido',
-          'No se pudo cargar el archivo. Asegúrate de elegir un archivo .json válido exportado por la calculadora.',
+          'No se pudo cargar el archivo. Asegúrate de elegir un archivo .json válido.',
           'error'
         );
       }
@@ -777,29 +1169,123 @@ export default function CalculadoraCostos3D() {
     reader.readAsText(file);
   };
 
-  // Suma dinámica de todos los costos adicionales dentro de extrasList
-  const totalExtrasCost = useMemo(
+  // 5. Métricas Avanzadas de Producción (3DPCC PRO)
+  const advancedMetrics = useMemo(() => {
+    const safePrinterCost = Math.max(0, Number(printerCost) || 0);
+    const safeAnnualMaint = Math.max(0, Number(annualMaintenance) || 0);
+    const safeLifespan = Math.max(0.1, Number(printerLifespanYears) || 1);
+    const safeUptime = Math.min(100, Math.max(1, Number(uptimePercent) || 50));
+    const safeWatts = Math.max(0, Number(powerWatts) || 0);
+    const safeElecRate = Math.max(0, Number(electricityRate) || 0);
+    const safeBuffer = Math.max(1, Number(bufferFactor) || 1);
+
+    // Inversión Total = Costo Impresora + (Mantenimiento Anual * Vida útil en años)
+    const totalInvestment = safePrinterCost + safeAnnualMaint * safeLifespan;
+
+    // Horas operativas durante la vida útil
+    const lifetimeHours = safeLifespan * 365 * 24 * (safeUptime / 100);
+
+    // Tasa de Depreciación ($/hr)
+    const depreciationRatePerHr = lifetimeHours > 0 ? totalInvestment / lifetimeHours : 0;
+
+    // Tasa de Electricidad ($/hr)
+    const electricityRatePerHr = (safeWatts / 1000) * safeElecRate;
+
+    // Tarifa de Máquina Total ($/hr) = (Depreciación + Electricidad) * Buffer Factor
+    const totalMachineRatePerHr = (depreciationRatePerHr + electricityRatePerHr) * safeBuffer;
+
+    return {
+      totalInvestment,
+      lifetimeHours,
+      depreciationRatePerHr,
+      electricityRatePerHr,
+      totalMachineRatePerHr,
+    };
+  }, [
+    printerCost,
+    annualMaintenance,
+    printerLifespanYears,
+    uptimePercent,
+    powerWatts,
+    electricityRate,
+    bufferFactor,
+  ]);
+
+  // Suma unitaria de extras
+  const unitExtrasCost = useMemo(
     () => extrasList.reduce((acc, item) => acc + Math.max(0, Number(item.costo) || 0), 0),
     [extrasList]
   );
 
+  // Cálculos Financieros Principales (con Multimaterial, Lote/Batch, Tarifa de Máquina Total y Margen Bruto Real)
   const calculations = useMemo(() => {
-    const totalPrintHours = Math.max(0, printHours) + Math.max(0, printMinutes) / 60;
-    const costMaterial = (Math.max(0, materialCost) / 1000) * Math.max(0, materialUsed);
-    const costLabor = (Math.max(0, laborMinutes) / 60) * Math.max(0, laborRate);
-    const costWear = totalPrintHours * Math.max(0, machineWearRate);
+    const qty = Math.max(1, Math.round(Number(batchQuantity) || 1));
+    const eff = Math.max(1, Number(materialEfficiency) || 1);
+
+    // Tiempo de impresión unitario y total del lote
+    const unitPrintHours = Math.max(0, printHours) + Math.max(0, printMinutes) / 60;
+    const totalPrintHours = unitPrintHours * qty;
+
+    // Peso total y costo de todos los materiales (incluyendo multiplicador de eficiencia y cantidad del lote)
+    const unitMaterialWeight = materialsList.reduce(
+      (acc, m) => acc + Math.max(0, Number(m.weightUsed) || 0),
+      0
+    );
+    const totalMaterialWeight = unitMaterialWeight * qty;
+
+    const unitMaterialRawCost = materialsList.reduce((acc, m) => {
+      const costKg = Math.max(0, Number(m.costPerKg) || 0);
+      const weightG = Math.max(0, Number(m.weightUsed) || 0);
+      return acc + (costKg / 1000) * weightG;
+    }, 0);
+
+    const costMaterial = unitMaterialRawCost * eff * qty;
+
+    // Mano de obra
+    const totalLaborMinutes = Math.max(0, laborMinutes) * qty;
+    const costLabor = (totalLaborMinutes / 60) * Math.max(0, laborRate);
+
+    // Consumo eléctrico y Tarifa de Máquina Total (alimentada desde Configuración Avanzada)
     const energyKwh = (Math.max(0, powerWatts) / 1000) * totalPrintHours;
-    const costElectricity = energyKwh * Math.max(0, electricityRate);
+    const costElectricity = totalPrintHours * advancedMetrics.electricityRatePerHr;
+
+    // La Tarifa de Máquina Total alimenta directamente el cálculo del Costo de Desgaste
+    const costWear = totalPrintHours * advancedMetrics.totalMachineRatePerHr;
+
+    // Costos Extras totales del lote
+    const totalExtrasCost = unitExtrasCost * qty;
     const costExtras = totalExtrasCost;
 
+    // Costo Total de Producción
     const totalBaseCost = costMaterial + costLabor + costWear + costElectricity + totalExtrasCost;
+    const unitBaseCost = totalBaseCost / qty;
 
+    // 1. Corrección de Fórmula de Márgenes (Verdadero Margen Bruto / Gross Margin):
+    // Precio de Venta = Costo Total / (1 - Porcentaje de Margen)
+    // Manejo seguro de división por cero cuando el margen >= 100%
     const computeTier = (marginPct) => {
-      const profit = totalBaseCost * (marginPct / 100);
-      const subtotal = totalBaseCost + profit;
+      const clampedPct = Math.min(99.9, Math.max(0, Number(marginPct) || 0));
+      const marginDecimal = clampedPct / 100;
+      const denominator = 1 - marginDecimal;
+
+      const subtotal =
+        denominator > 0.0001 ? totalBaseCost / denominator : totalBaseCost * 100;
+      const profit = Math.max(0, subtotal - totalBaseCost);
+      // El impuesto se aplica DESPUÉS de calcular el Precio de Venta (subtotal)
       const taxAmount = subtotal * (Math.max(0, taxPercent) / 100);
       const finalPrice = subtotal + taxAmount;
-      return { marginPct, profit, subtotal, taxAmount, finalPrice };
+      const unitFinalPrice = finalPrice / qty;
+      const unitSubtotal = subtotal / qty;
+
+      return {
+        marginPct: clampedPct,
+        profit,
+        subtotal,
+        taxAmount,
+        finalPrice,
+        unitFinalPrice,
+        unitSubtotal,
+      };
     };
 
     const tiers = {
@@ -807,11 +1293,16 @@ export default function CalculadoraCostos3D() {
       '40': computeTier(40),
       '60': computeTier(60),
       '80': computeTier(80),
-      custom: computeTier(Math.max(0, customMargin)),
+      custom: computeTier(customMargin),
     };
 
     return {
+      qty,
+      unitPrintHours,
       totalPrintHours,
+      unitMaterialWeight,
+      totalMaterialWeight,
+      totalLaborMinutes,
       energyKwh,
       costMaterial,
       costLabor,
@@ -820,20 +1311,21 @@ export default function CalculadoraCostos3D() {
       costExtras,
       totalExtrasCost,
       totalBaseCost,
+      unitBaseCost,
       tiers,
       activeTier: tiers[selectedTier] || tiers['40'],
     };
   }, [
-    materialCost,
-    materialUsed,
+    batchQuantity,
+    materialEfficiency,
     printHours,
     printMinutes,
+    materialsList,
     laborMinutes,
     laborRate,
-    machineWearRate,
     powerWatts,
-    electricityRate,
-    totalExtrasCost,
+    advancedMetrics,
+    unitExtrasCost,
     taxPercent,
     customMargin,
     selectedTier,
@@ -844,26 +1336,26 @@ export default function CalculadoraCostos3D() {
   const unitSuffix = isFDM ? 'g' : 'ml';
   const formatMoney = (val) => `${currency}${Number(val || 0).toFixed(2)}`;
 
-  // Lista completa de conceptos para la calculadora principal
+  // Lista de conceptos para el gráfico y desglose
   const chartItems = useMemo(
     () => [
       {
         key: 'showMaterial',
-        label: `Costo de Material (${materialUsed}${unitSuffix})`,
-        shortLabel: 'Material',
+        label: `Costo de Material (${calculations.totalMaterialWeight}${unitSuffix} • Eficiencia ${materialEfficiency}x)`,
+        shortLabel: `Material (${materialsList.length} ${materialsList.length === 1 ? 'tipo' : 'tipos'})`,
         value: calculations.costMaterial,
         color: '#059669',
       },
       {
         key: 'showLabor',
-        label: `Costo de Mano de Obra (${laborMinutes} min)`,
+        label: `Costo de Mano de Obra (${calculations.totalLaborMinutes} min)`,
         shortLabel: 'Mano de Obra',
         value: calculations.costLabor,
         color: '#4f46e5',
       },
       {
         key: 'showMachineWear',
-        label: `Costo de Máquina / Desgaste (${calculations.totalPrintHours.toFixed(1)}h)`,
+        label: `Costo de Máquina / Desgaste (${calculations.totalPrintHours.toFixed(1)}h × ${currency}${advancedMetrics.totalMachineRatePerHr.toFixed(2)}/h)`,
         shortLabel: 'Desgaste Máquina',
         value: calculations.costWear,
         color: '#d97706',
@@ -881,70 +1373,51 @@ export default function CalculadoraCostos3D() {
           extrasList.length > 0
             ? `Costos Extras (${extrasList.map((e) => e.nombre).join(', ')})`
             : 'Costos Extras (Sin adicionales)',
-        shortLabel:
-          extrasList.length > 0
-            ? `Extras (${extrasList.length} ${extrasList.length === 1 ? 'ítem' : 'ítems'})`
-            : 'Extras',
-        value: totalExtrasCost,
+        shortLabel: `Extras (${extrasList.length})`,
+        value: calculations.totalExtrasCost,
         color: '#e11d48',
       },
     ],
     [
-      materialUsed,
+      calculations,
       unitSuffix,
-      laborMinutes,
-      calculations.totalPrintHours,
-      calculations.energyKwh,
-      calculations.costMaterial,
-      calculations.costLabor,
-      calculations.costWear,
-      calculations.costElectricity,
+      materialEfficiency,
+      materialsList.length,
+      currency,
+      advancedMetrics.totalMachineRatePerHr,
       extrasList,
-      totalExtrasCost,
     ]
   );
 
-  // Filas filtradas según los checkboxes de pdfSettings para el documento PDF
+  // Filas visibles en el PDF
   const visiblePdfCostItems = useMemo(
     () => chartItems.filter((item) => pdfSettings[item.key]),
     [chartItems, pdfSettings]
   );
 
-  // 1. Lógica de Agrupación de Costos Ocultos:
-  // Suma automáticamente el valor monetario de todos los conceptos desmarcados (false en pdfSettings),
-  // incluyendo ganancia neta, desgaste de máquina, electricidad, totalExtrasCost, material y mano de obra.
+  // Suma de costos ocultos para el PDF
   const costosOcultosTotal = useMemo(() => {
     let totalOculto = 0;
     if (!pdfSettings.showMaterial) totalOculto += calculations.costMaterial;
     if (!pdfSettings.showLabor) totalOculto += calculations.costLabor;
     if (!pdfSettings.showMachineWear) totalOculto += calculations.costWear;
     if (!pdfSettings.showElectricity) totalOculto += calculations.costElectricity;
-    if (!pdfSettings.showExtras) totalOculto += totalExtrasCost;
+    if (!pdfSettings.showExtras) totalOculto += calculations.totalExtrasCost;
     if (!pdfSettings.showProfitMargin) totalOculto += calculations.activeTier.profit;
     return totalOculto;
-  }, [
-    pdfSettings,
-    calculations.costMaterial,
-    calculations.costLabor,
-    calculations.costWear,
-    calculations.costElectricity,
-    totalExtrasCost,
-    calculations.activeTier.profit,
-  ]);
+  }, [pdfSettings, calculations]);
 
-  // 3. Segmentos del Gráfico de Anillo del PDF:
-  // Agrupa todos los conceptos desmarcados en una sola rebanada gris neutra ("Costos Operativos")
-  // para que la suma visual y matemática del gráfico coincida exactamente con el Subtotal.
+  // Segmentos del gráfico del PDF
   const pdfChartItems = useMemo(() => {
     const slices = [...visiblePdfCostItems];
 
     if (pdfSettings.showProfitMargin && calculations.activeTier.profit > 0) {
       slices.push({
         key: 'showProfitMargin',
-        label: `Desglose de Ganancia / Margen (+${calculations.activeTier.marginPct}%)`,
-        shortLabel: 'Ganancia / Margen',
+        label: `Margen Bruto (${calculations.activeTier.marginPct}%)`,
+        shortLabel: 'Margen Bruto',
         value: calculations.activeTier.profit,
-        color: '#10b981', // Esmeralda claro para distinguir del material
+        color: '#10b981',
       });
     }
 
@@ -954,7 +1427,7 @@ export default function CalculadoraCostos3D() {
         label: 'Costos Operativos, Gestión y Extras',
         shortLabel: 'Costos Operativos',
         value: costosOcultosTotal,
-        color: '#94a3b8', // Gris neutro suave (Slate 400)
+        color: '#94a3b8',
       });
     }
 
@@ -967,7 +1440,7 @@ export default function CalculadoraCostos3D() {
     costosOcultosTotal,
   ]);
 
-  // Exportar Presupuesto a PDF (SIEMPRE en Fondo Blanco y Texto Oscuro para documentos formales)
+  // Exportar Presupuesto a PDF (Fondo Blanco y Texto Oscuro)
   const handleExportPdf = async () => {
     if (!pdfContainerRef.current) {
       showToast('Error', 'No se encontró la referencia al contenedor del presupuesto.', 'error');
@@ -978,7 +1451,6 @@ export default function CalculadoraCostos3D() {
     try {
       const { html2canvas, jsPDF } = await loadPdfLibraries();
 
-      // 1. Asegurar que el gráfico del PDF esté renderizado con los segmentos visibles + Costos Operativos agrupados
       if (pdfChartCanvasRef.current) {
         drawDoughnutCanvas(
           pdfChartCanvasRef.current,
@@ -986,14 +1458,12 @@ export default function CalculadoraCostos3D() {
           calculations.activeTier.subtotal,
           currency,
           false,
-          'SUBTOTAL'
+          'PRECIO VENTA'
         );
       }
 
-      // 2. Esperar un frame de renderizado para asegurar que las imágenes estén listas
       await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 120)));
 
-      // 3. Capturar #pdf-budget-container forzando fondo blanco (#ffffff)
       const canvas = await html2canvas(pdfContainerRef.current, {
         scale: 2,
         useCORS: true,
@@ -1046,9 +1516,12 @@ export default function CalculadoraCostos3D() {
     { key: 'showLabor', label: 'Mostrar costo de Mano de Obra' },
     { key: 'showMachineWear', label: 'Mostrar costo de Máquina (Desgaste)' },
     { key: 'showElectricity', label: 'Mostrar costo de Consumo Eléctrico' },
-    { key: 'showExtras', label: 'Mostrar costos Extras (Hardware/Embalaje)' },
+    { key: 'showExtras', label: 'Mostrar costos Extras (Hardware/Packaging)' },
     { key: 'showProfitMargin', label: 'Mostrar Desglose de Ganancia / Margen' },
   ];
+
+  const activeMarginSliderValue =
+    selectedTier === 'custom' ? customMargin : Number(selectedTier);
 
   return (
     <div className={darkMode ? 'dark' : ''}>
@@ -1079,17 +1552,22 @@ export default function CalculadoraCostos3D() {
                 3D
               </div>
               <div>
-                <h1 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 dark:text-white">
-                  Calculadora de Costos de Impresión 3D
-                </h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+                    Calculadora de Costos 3D
+                  </h1>
+                  <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                    PRO SaaS
+                  </span>
+                </div>
                 <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Cotizador profesional SaaS • Gestión de máquinas y exportación PDF
+                  Finanzas corporativas • Multimaterial • Lotes y amortización avanzada
                 </p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5">
-              {/* Selector de Moneda: Únicamente Soles (PEN - S/) y Dólares (USD - $) */}
+              {/* Selector de Moneda: Soles (PEN - S/) y Dólares (USD - $) */}
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
@@ -1130,16 +1608,12 @@ export default function CalculadoraCostos3D() {
                 className="hidden"
               />
 
-              {/* Botón Modo Claro / Modo Oscuro con lógica corregida */}
+              {/* Botón Modo Claro / Modo Oscuro */}
               <button
                 type="button"
                 onClick={() => setDarkMode((prev) => !prev)}
                 className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200/80 text-gray-800 border border-gray-200 dark:bg-slate-800/90 dark:hover:bg-slate-800 dark:text-slate-100 dark:border-gray-700 transition-colors duration-200"
-                title={
-                  darkMode
-                    ? 'Cambiar a Modo Claro'
-                    : 'Cambiar a Modo Oscuro'
-                }
+                title={darkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
               >
                 <span>{darkMode ? '☀️ Modo Claro' : '🌙 Modo Oscuro'}</span>
               </button>
@@ -1147,40 +1621,55 @@ export default function CalculadoraCostos3D() {
           </div>
         </header>
 
-        {/* Main Content con mayor respiro (whitespace) */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 space-y-12">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
-            {/* COLUMNA IZQUIERDA: INPUTS */}
-            <section className="lg:col-span-7 space-y-8">
-              {/* 1. Información General y Subida de Render 3D */}
+        {/* 2. Layout de Dos Columnas (Estilo Dashboard: 8 cols Izquierda / 4 cols Derecha Sticky) */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* COLUMNA IZQUIERDA (INPUTS - 8 COLUMNAS) */}
+            <section className="lg:col-span-8 space-y-6">
+              {/* 1. Proyecto, Lote (Batch) y Render 3D */}
               <SectionCard
                 step="1"
-                title="Información General"
-                subtitle="Nombre de la pieza, tecnología y captura o render del modelo 3D"
+                title="Detalles del Proyecto y Lote de Producción"
+                subtitle="Nombre de la pieza, tecnología, cantidad del lote (Batch) y render del modelo 3D"
+                badge={
+                  calculations.qty > 1 ? `Lote: ${calculations.qty} uds` : '1 Unidad'
+                }
                 accent="blue"
               >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-7">
-                  <div>
-                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-2">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 mb-6">
+                  <div className="sm:col-span-5">
+                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-1.5">
                       Nombre de la pieza / proyecto
                     </label>
                     <input
                       type="text"
                       value={partName}
                       onChange={(e) => setPartName(e.target.value)}
-                      placeholder="Ej. Engranaje Helicoidal"
-                      className="w-full rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-700 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 dark:focus:border-emerald-400 transition-all duration-200"
+                      placeholder="Ej. Soporte Articulado Pro"
+                      className="w-full rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-700 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all duration-200"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-2">
+
+                  <div className="sm:col-span-3">
+                    <NumberField
+                      label="Cantidad a producir (Batch)"
+                      value={batchQuantity}
+                      onChange={(val) => setBatchQuantity(Math.max(1, Math.round(val || 1)))}
+                      min={1}
+                      step="1"
+                      suffix="uds"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-4">
+                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-1.5">
                       Tecnología de impresión
                     </label>
-                    <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100/80 dark:bg-slate-900/60 rounded-lg border border-gray-200/80 dark:border-gray-800">
+                    <div className="grid grid-cols-2 gap-1.5 p-1 bg-gray-100/80 dark:bg-slate-900/60 rounded-lg border border-gray-200/80 dark:border-gray-800">
                       <button
                         type="button"
                         onClick={() => setTechnology('FDM')}
-                        className={`py-2 px-3 rounded-md text-xs font-semibold transition-all duration-200 ${
+                        className={`py-2 px-2.5 rounded-md text-xs font-semibold transition-all duration-200 ${
                           isFDM
                             ? 'bg-emerald-600 text-white shadow-sm'
                             : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
@@ -1191,7 +1680,7 @@ export default function CalculadoraCostos3D() {
                       <button
                         type="button"
                         onClick={() => setTechnology('SLA')}
-                        className={`py-2 px-3 rounded-md text-xs font-semibold transition-all duration-200 ${
+                        className={`py-2 px-2.5 rounded-md text-xs font-semibold transition-all duration-200 ${
                           !isFDM
                             ? 'bg-blue-600 text-white shadow-sm'
                             : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
@@ -1203,102 +1692,232 @@ export default function CalculadoraCostos3D() {
                   </div>
                 </div>
 
-                {/* Subida y Vista Previa (Thumbnail) del Render 3D */}
-                <div>
-                  <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-2.5">
-                    Captura o Render del Modelo 3D (Vista previa para la interfaz y el PDF)
-                  </label>
-                  <div className="flex flex-col sm:flex-row items-center gap-5 p-5 rounded-xl bg-gray-50/70 dark:bg-slate-900/40 border border-dashed border-gray-200 dark:border-gray-800">
-                    <div className="w-24 h-24 rounded-xl bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
-                      {modelImage ? (
-                        <img
-                          src={modelImage}
-                          alt="Thumbnail del modelo 3D"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-[11px] font-medium text-gray-400 dark:text-slate-500 text-center px-2">
-                          Sin render
-                        </span>
-                      )}
-                    </div>
+                {/* Vista Previa del Render 3D */}
+                <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-xl bg-gray-50/70 dark:bg-slate-900/40 border border-dashed border-gray-200 dark:border-gray-800">
+                  <div className="w-20 h-20 rounded-xl bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                    {modelImage ? (
+                      <img
+                        src={modelImage}
+                        alt="Thumbnail del modelo 3D"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-[11px] font-medium text-gray-400 dark:text-slate-500 text-center px-2">
+                        Sin render
+                      </span>
+                    )}
+                  </div>
 
-                    <div className="flex-1 text-center sm:text-left">
-                      <p className="text-xs font-semibold text-gray-800 dark:text-slate-200 mb-1">
-                        Sube una imagen o captura de tu laminador 3D
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-slate-400 mb-3.5">
-                        Se mostrará en la vista previa y de forma destacada en el presupuesto PDF.
-                      </p>
-                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
-                        <input
-                          ref={imageInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                          className="block w-full sm:w-auto text-xs text-gray-600 dark:text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 file:transition-colors file:duration-200 file:cursor-pointer cursor-pointer"
-                        />
-                        {modelImage && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setModelImage(null);
-                              if (imageInputRef.current) imageInputRef.current.value = '';
-                            }}
-                            className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 dark:bg-rose-500/15 dark:hover:bg-rose-500/25 dark:text-rose-300 dark:border-rose-500/30 transition-colors duration-200"
-                          >
-                            Quitar imagen
-                          </button>
-                        )}
-                      </div>
+                  <div className="flex-1 text-center sm:text-left">
+                    <p className="text-xs font-semibold text-gray-800 dark:text-slate-200 mb-0.5">
+                      Captura o Render del Modelo 3D
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mb-2.5">
+                      Se incluirá de forma destacada en la vista previa y en el reporte PDF.
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="block w-full sm:w-auto text-xs text-gray-600 dark:text-slate-300 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 file:transition-colors file:cursor-pointer cursor-pointer"
+                      />
+                      {modelImage && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModelImage(null);
+                            if (imageInputRef.current) imageInputRef.current.value = '';
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30 transition-colors"
+                        >
+                          Quitar imagen
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
               </SectionCard>
 
-              {/* 2. Material */}
+              {/* 2. Soporte Multimaterial + Inventario de Filamentos */}
               <SectionCard
                 step="2"
-                title="Material y Consumo"
-                subtitle="Precio por bobina/botella y peso/volumen estimado en el laminador"
-                badge={isFDM ? 'Bobina 1 kg' : 'Botella 1 L'}
+                title="Materiales y Consumo (Multimaterial)"
+                subtitle="Combina múltiples filamentos o resinas (ej. PLA + PETG) en el mismo proyecto"
+                badge={`Total: ${currency}${calculations.costMaterial.toFixed(2)}`}
                 accent="emerald"
+                rightAction={
+                  <button
+                    type="button"
+                    onClick={() => setIsFilamentModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/25 dark:text-emerald-300 dark:border-emerald-500/30 transition-colors"
+                  >
+                    🧵 Inventario de Filamentos
+                  </button>
+                }
               >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <NumberField
-                    label={
-                      isFDM
-                        ? `Costo del filamento por kg (${currency})`
-                        : `Costo de resina por Litro (${currency})`
-                    }
-                    value={materialCost}
-                    onChange={setMaterialCost}
-                    prefix={currency}
-                    suffix={isFDM ? '/ 1000g' : '/ 1000ml'}
-                  />
-                  <NumberField
-                    label={isFDM ? 'Cantidad utilizada (gramos)' : 'Cantidad utilizada (ml)'}
-                    value={materialUsed}
-                    onChange={setMaterialUsed}
-                    suffix={isFDM ? 'gramos' : 'ml'}
-                    step="1"
-                  />
+                <div className="space-y-3">
+                  {materialsList.map((mat, index) => {
+                    const rowUnitCost =
+                      ((Math.max(0, Number(mat.costPerKg) || 0) / 1000) *
+                        Math.max(0, Number(mat.weightUsed) || 0)) *
+                      materialEfficiency;
+                    return (
+                      <div
+                        key={mat.id}
+                        className="p-4 rounded-xl bg-gray-50/80 dark:bg-slate-950/50 border border-gray-200/80 dark:border-gray-800 space-y-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                            Material #{index + 1}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-gray-500 dark:text-slate-400">
+                              Subtotal (c/eficiencia {materialEfficiency}x):{' '}
+                              <strong className="text-gray-900 dark:text-white">
+                                {currency}
+                                {(rowUnitCost * calculations.qty).toFixed(2)}
+                              </strong>
+                            </span>
+                            {materialsList.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMaterialRow(mat.id)}
+                                className="p-1 rounded-md text-xs font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/15 transition-colors"
+                                title="Quitar este material"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
+                          <div className="sm:col-span-4">
+                            <label className="block text-[11px] font-semibold text-gray-600 dark:text-slate-400 mb-1">
+                              Seleccionar del Inventario
+                            </label>
+                            <select
+                              value={mat.filamentId || 'custom'}
+                              onChange={(e) =>
+                                handleUpdateMaterialRow(mat.id, 'filamentId', e.target.value)
+                              }
+                              className="w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+                            >
+                              {filamentInventory.map((f) => (
+                                <option key={f.id} value={f.id}>
+                                  {f.name} ({currency}
+                                  {Number(f.costPerKg).toFixed(2)})
+                                </option>
+                              ))}
+                              <option value="custom">⚙️ Personalizado</option>
+                            </select>
+                          </div>
+
+                          <div className="sm:col-span-3">
+                            <label className="block text-[11px] font-semibold text-gray-600 dark:text-slate-400 mb-1">
+                              Nombre del Material
+                            </label>
+                            <input
+                              type="text"
+                              value={mat.name}
+                              onChange={(e) =>
+                                handleUpdateMaterialRow(mat.id, 'name', e.target.value)
+                              }
+                              placeholder="Ej. PLA / PETG"
+                              className="w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <label className="block text-[11px] font-semibold text-gray-600 dark:text-slate-400 mb-1">
+                              Costo / {isFDM ? 'kg' : 'L'} ({currency})
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={mat.costPerKg}
+                              onChange={(e) => {
+                                handleUpdateMaterialRow(
+                                  mat.id,
+                                  'costPerKg',
+                                  parseFloat(e.target.value) || 0
+                                );
+                                handleUpdateMaterialRow(mat.id, 'filamentId', 'custom');
+                              }}
+                              className="w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-3">
+                            <label className="block text-[11px] font-semibold text-gray-600 dark:text-slate-400 mb-1">
+                              Peso por pieza ({unitSuffix})
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={mat.weightUsed}
+                                onChange={(e) =>
+                                  handleUpdateMaterialRow(
+                                    mat.id,
+                                    'weightUsed',
+                                    parseFloat(e.target.value) || 0
+                                  )
+                                }
+                                className="w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 pl-3 pr-10 py-2 text-xs font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+                              />
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                                {unitSuffix}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleAddMaterialRow()}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all"
+                    >
+                      + Agregar Otro Material (Multimaterial)
+                    </button>
+                    <span className="text-xs text-gray-500 dark:text-slate-400 font-mono">
+                      Peso total lote: <strong>{calculations.totalMaterialWeight} {unitSuffix}</strong>
+                    </span>
+                  </div>
                 </div>
               </SectionCard>
 
-              {/* 3. Tiempos y Mano de Obra */}
+              {/* 3. Tiempos, Mano de Obra y Selección de Impresora */}
               <SectionCard
                 step="3"
-                title="Tiempos y Mano de Obra"
-                subtitle="Duración de impresión y post-procesado manual"
+                title="Tiempos de Impresión, Mano de Obra y Máquina"
+                subtitle="Duración por pieza y selección del perfil de impresora activo"
+                badge={`${calculations.totalPrintHours.toFixed(1)} hrs totales`}
                 accent="indigo"
+                rightAction={
+                  <button
+                    type="button"
+                    onClick={() => setIsPrinterModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30 transition-colors"
+                  >
+                    🖨️ Gestionar Impresoras
+                  </button>
+                }
               >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-2">
-                      Tiempo de impresión
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-5">
+                  <div className="sm:col-span-6">
+                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-1.5">
+                      Tiempo de impresión (por unidad)
                     </label>
-                    <div className="grid grid-cols-2 gap-3.5">
+                    <div className="grid grid-cols-2 gap-3">
                       <NumberField
                         value={printHours}
                         onChange={setPrintHours}
@@ -1313,438 +1932,517 @@ export default function CalculadoraCostos3D() {
                       />
                     </div>
                   </div>
-                  <NumberField
-                    label="Tiempo de mano de obra (minutos)"
-                    value={laborMinutes}
-                    onChange={setLaborMinutes}
-                    suffix="min"
-                    step="5"
-                  />
-                  <div className="sm:col-span-2">
+
+                  <div className="sm:col-span-6">
                     <NumberField
-                      label={`Tarifa de mano de obra por hora (${currency}/h)`}
-                      value={laborRate}
-                      onChange={setLaborRate}
-                      prefix={currency}
-                      suffix="por hora"
+                      label="Mano de obra activa por unidad (minutos)"
+                      value={laborMinutes}
+                      onChange={setLaborMinutes}
+                      suffix="min"
+                      step="5"
                     />
                   </div>
-                </div>
-              </SectionCard>
 
-              {/* 4. Desgaste de Máquina y Electricidad */}
-              <SectionCard
-                step="4"
-                title="Desgaste de Máquina y Electricidad"
-                subtitle="Selecciona un perfil de impresora o ajusta sus parámetros"
-                accent="amber"
-                rightAction={
-                  <button
-                    type="button"
-                    onClick={() => setIsPrinterModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 dark:text-amber-300 dark:border-amber-500/30 transition-colors duration-200"
-                  >
-                    + Gestionar Impresoras
-                  </button>
-                }
-              >
-                <div className="mb-6 p-4 rounded-xl bg-gray-50/70 dark:bg-slate-900/40 border border-gray-200/80 dark:border-gray-800">
-                  <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-amber-300 mb-2">
-                    Perfil de Impresora
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <select
-                      value={selectedPrinterId}
-                      onChange={(e) => handleSelectPrinterProfile(e.target.value)}
-                      className="flex-1 rounded-lg bg-white dark:bg-slate-900/60 border border-gray-200 dark:border-gray-700 px-3.5 py-2.5 text-sm font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all duration-200"
-                    >
-                      {printerProfiles.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} — {p.watts}W | {currency}
-                          {Number(p.wearRate).toFixed(2)}/h
-                        </option>
-                      ))}
-                      <option value="custom">⚙️ Personalizado (Valores manuales)</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setIsPrinterModalOpen(true)}
-                      className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-white hover:bg-gray-50 text-emerald-700 border border-gray-200 shadow-sm dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-emerald-400 dark:border-gray-700 transition-colors duration-200"
-                    >
-                      + Nuevo Perfil
-                    </button>
+                  <div className="sm:col-span-12 pt-2">
+                    <div className="p-4 rounded-xl bg-gray-50/70 dark:bg-slate-950/50 border border-gray-200/80 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex-1">
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-amber-300 mb-1.5">
+                          Perfil de Impresora Activo (Alimenta la Configuración Avanzada)
+                        </label>
+                        <select
+                          value={selectedPrinterId}
+                          onChange={(e) => handleSelectPrinterProfile(e.target.value)}
+                          className="w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 px-3.5 py-2 text-xs font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+                        >
+                          {printerProfiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} — {p.watts}W | Máquina: {currency}
+                              {Number(p.printerCost || 250).toFixed(0)}
+                            </option>
+                          ))}
+                          <option value="custom">⚙️ Personalizado (Ajuste en Configuración Avanzada)</option>
+                        </select>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[11px] text-gray-500 dark:text-slate-400 block">
+                          Tarifa Máquina Total Calculada
+                        </span>
+                        <span className="text-base font-extrabold font-mono text-amber-600 dark:text-amber-400">
+                          {currency}
+                          {advancedMetrics.totalMachineRatePerHr.toFixed(2)}/hr
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                  <NumberField
-                    label={`Desgaste (${currency}/h)`}
-                    value={machineWearRate}
-                    onChange={(val) => {
-                      setMachineWearRate(val);
-                      setSelectedPrinterId('custom');
-                    }}
-                    prefix={currency}
-                    suffix="/h"
-                    step="0.05"
-                  />
-                  <NumberField
-                    label="Consumo medio (Watts)"
-                    value={powerWatts}
-                    onChange={(val) => {
-                      setPowerWatts(val);
-                      setSelectedPrinterId('custom');
-                    }}
-                    suffix="W"
-                    step="10"
-                  />
-                  <NumberField
-                    label={`Costo kWh (${currency})`}
-                    value={electricityRate}
-                    onChange={setElectricityRate}
-                    prefix={currency}
-                    suffix="kWh"
-                    step="0.01"
-                  />
-                </div>
               </SectionCard>
 
-              {/* 5. Extras, Embalaje e Impuestos */}
+              {/* 4. Botón Desplegable para Extras (Hardware & Packaging) + Impuestos */}
               <SectionCard
-                step="5"
-                title="Extras, Embalaje e Impuestos"
-                subtitle="Agrega costos adicionales personalizables (imanes, pintura, embalaje) e IVA"
-                badge={`Extras: ${currency}${totalExtrasCost.toFixed(2)}`}
+                step="4"
+                title="Extras (Hardware & Packaging) e Impuestos"
+                subtitle="Añade componentes de hardware o embalaje mediante el menú desplegable"
+                badge={`Extras Lote: ${currency}${calculations.totalExtrasCost.toFixed(2)}`}
                 accent="rose"
               >
-                <div className="space-y-6">
-                  {/* Input de Impuestos / IVA (%) intacto */}
-                  <div className="max-w-xs">
+                <div className="space-y-5">
+                  {/* Lista de filas de Extras agregados */}
+                  <div className="space-y-2.5">
+                    {extrasList.length === 0 ? (
+                      <div className="px-4 py-3 rounded-xl bg-gray-50 dark:bg-slate-800/40 border border-dashed border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-slate-500 text-center">
+                        No hay ítems adicionales. Haz clic en "Add item ▼" para agregar Hardware o Packaging.
+                      </div>
+                    ) : (
+                      extrasList.map((extra) => (
+                        <div
+                          key={extra.id}
+                          className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-gray-200/80 dark:border-gray-700/80"
+                        >
+                          <div className="sm:col-span-3 flex items-center gap-2">
+                            <span
+                              className={`text-[10px] font-mono font-bold uppercase px-2.5 py-1 rounded-md border ${
+                                extra.categoria === 'Packaging'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30'
+                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30'
+                              }`}
+                            >
+                              {extra.categoria === 'Packaging' ? '📦 Packaging' : '🔧 Hardware'}
+                            </span>
+                          </div>
+
+                          <div className="sm:col-span-5">
+                            <input
+                              type="text"
+                              value={extra.nombre}
+                              onChange={(e) =>
+                                handleUpdateExtraRow(extra.id, 'nombre', e.target.value)
+                              }
+                              placeholder={
+                                extra.categoria === 'Packaging'
+                                  ? 'Nombre de caja / bolsa...'
+                                  : 'Nombre de tornillo / imán...'
+                              }
+                              className="w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-3 relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-gray-400 pointer-events-none">
+                              {currency}
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={extra.costo}
+                              onChange={(e) =>
+                                handleUpdateExtraRow(
+                                  extra.id,
+                                  'costo',
+                                  parseFloat(e.target.value) || 0
+                                )
+                              }
+                              className={`w-full rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 py-1.5 pr-3 ${
+                                currency.length > 1 ? 'pl-9' : 'pl-7'
+                              } text-xs font-mono font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500`}
+                            />
+                          </div>
+
+                          <div className="sm:col-span-1 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExtra(extra.id)}
+                              className="p-1.5 rounded-lg text-xs font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15 transition-colors"
+                              title="Eliminar fila"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Botón Central Ancho Desplegable "Add item ▼" */}
+                  <div ref={extrasDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddExtraMenuOpen((prev) => !prev)}
+                      className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-gray-100 hover:bg-gray-200/80 text-gray-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 border border-gray-200 dark:border-gray-700 transition-all flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <span>Add item ▼</span>
+                    </button>
+
+                    {isAddExtraMenuOpen && (
+                      <div className="absolute left-0 right-0 mt-2 z-20 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden divide-y divide-gray-100 dark:divide-gray-700/60">
+                        <button
+                          type="button"
+                          onClick={() => handleAddExtraByCategory('Hardware')}
+                          className="w-full px-4 py-3 text-left text-xs font-semibold text-gray-800 dark:text-slate-100 hover:bg-emerald-50 dark:hover:bg-slate-700/70 flex items-center justify-between transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span>🔧</span>
+                            <span>Hardware</span>
+                          </span>
+                          <span className="text-[11px] font-normal text-gray-400">
+                            Tornillos, imanes, insertos roscados...
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddExtraByCategory('Packaging')}
+                          className="w-full px-4 py-3 text-left text-xs font-semibold text-gray-800 dark:text-slate-100 hover:bg-emerald-50 dark:hover:bg-slate-700/70 flex items-center justify-between transition-colors"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span>📦</span>
+                            <span>Packaging</span>
+                          </span>
+                          <span className="text-[11px] font-normal text-gray-400">
+                            Cajas, bolsas, protección, etiquetas...
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Impuestos / IVA (%) */}
+                  <div className="pt-3 border-t border-gray-100 dark:border-gray-800 max-w-xs">
                     <NumberField
-                      label="Impuestos / IVA (%)"
+                      label="Impuestos / IVA (%) — Aplicado tras el Precio de Venta"
                       value={taxPercent}
                       onChange={setTaxPercent}
                       suffix="%"
                       step="1"
                     />
                   </div>
-
-                  {/* Formulario en línea para añadir nuevos extras */}
-                  <div className="pt-2">
-                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-2.5">
-                      Agregar Costos Adicionales / Extras
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                      <div className="sm:col-span-6">
-                        <label className="block text-[11px] font-medium text-gray-500 dark:text-slate-400 mb-1">
-                          Nombre del Extra
-                        </label>
-                        <input
-                          type="text"
-                          value={extraNombreInput}
-                          onChange={(e) => setExtraNombreInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddExtra();
-                            }
-                          }}
-                          placeholder="Ej. Imanes, Pintura, Pegamento"
-                          className="w-full rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-700 px-3.5 py-2.5 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 dark:focus:border-emerald-400 transition-all duration-200"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-4">
-                        <label className="block text-[11px] font-medium text-gray-500 dark:text-slate-400 mb-1">
-                          Costo ({currency})
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-400 font-mono text-sm font-medium pointer-events-none select-none">
-                            {currency}
-                          </span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            value={extraCostoInput}
-                            onChange={(e) => setExtraCostoInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleAddExtra();
-                              }
-                            }}
-                            placeholder="0.00"
-                            className={`w-full rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-700 py-2.5 pr-3.5 ${
-                              currency.length > 1 ? 'pl-10' : 'pl-8'
-                            } text-sm font-mono text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 dark:focus:border-emerald-400 transition-all duration-200`}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <button
-                          type="button"
-                          onClick={handleAddExtra}
-                          className="w-full py-2.5 px-3.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] shadow-sm transition-all duration-200 whitespace-nowrap"
-                        >
-                          + Agregar
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Lista compacta de extras agregados */}
-                    <div className="mt-3.5 space-y-2">
-                      {extrasList.length === 0 ? (
-                        <div className="px-3.5 py-2.5 rounded-lg bg-gray-50 dark:bg-slate-800/50 border border-dashed border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-slate-500 text-center">
-                          No hay costos extras agregados. Usa el formulario superior para añadir uno.
-                        </div>
-                      ) : (
-                        extrasList.map((extra) => (
-                          <div
-                            key={extra.id}
-                            className="flex items-center justify-between px-3.5 py-2 rounded-lg bg-gray-50 dark:bg-slate-800/50 border border-gray-200/80 dark:border-gray-700/80 transition-colors"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
-                              <span className="text-xs font-medium text-gray-800 dark:text-slate-200 truncate">
-                                {extra.nombre}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2.5 shrink-0">
-                              <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white">
-                                {currency}
-                                {Number(extra.costo).toFixed(2)}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveExtra(extra.id)}
-                                className="p-1 rounded-md text-xs font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15 transition-colors duration-200"
-                                title="Eliminar extra"
-                                aria-label={`Eliminar ${extra.nombre}`}
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
                 </div>
               </SectionCard>
+
+              {/* 5. Panel Colapsable (Acordeón) "Configuración avanzada de producción" */}
+              <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setIsAdvancedOpen((prev) => !prev)}
+                  className="w-full p-6 sm:p-7 flex items-center justify-between gap-4 text-left hover:bg-gray-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-8 h-8 rounded-lg border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20 flex items-center justify-center font-mono font-bold text-sm">
+                      5
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold tracking-tight text-gray-900 dark:text-slate-100">
+                        Configuración avanzada de producción (Advanced Production Settings)
+                      </h2>
+                      <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                        Amortización de máquina, mantenimiento, uptime, eficiencia de material y factor buffer
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="hidden sm:inline-block text-xs font-mono font-semibold px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
+                      {currency}
+                      {advancedMetrics.totalMachineRatePerHr.toFixed(2)}/hr
+                    </span>
+                    <span
+                      className={`text-sm font-bold text-gray-500 dark:text-slate-400 transition-transform duration-200 ${
+                        isAdvancedOpen ? 'rotate-180' : ''
+                      }`}
+                    >
+                      ▼
+                    </span>
+                  </div>
+                </button>
+
+                {isAdvancedOpen && (
+                  <div className="px-6 sm:px-7 pb-7 pt-2 border-t border-gray-100 dark:border-gray-800 space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                      <NumberField
+                        label={`Tarifa de Mano de Obra (${currency}/hr)`}
+                        value={laborRate}
+                        onChange={setLaborRate}
+                        prefix={currency}
+                        suffix="/hr"
+                        step="0.5"
+                      />
+                      <NumberField
+                        label="Eficiencia del Material (Multiplicador)"
+                        value={materialEfficiency}
+                        onChange={setMaterialEfficiency}
+                        min={1}
+                        step="0.05"
+                        hint="Ej. 1.1 para 10% de desperdicio"
+                      />
+                      <NumberField
+                        label="Factor de Amortiguación (Buffer)"
+                        value={bufferFactor}
+                        onChange={setBufferFactor}
+                        min={1}
+                        step="0.05"
+                        hint="Ej. 1.3 para cubrir fallos"
+                      />
+
+                      <NumberField
+                        label={`Costo de la Impresora (${currency})`}
+                        value={printerCost}
+                        onChange={(val) => {
+                          setPrinterCost(val);
+                          setSelectedPrinterId('custom');
+                        }}
+                        prefix={currency}
+                        step="10"
+                      />
+                      <NumberField
+                        label={`Mantenimiento Anual (${currency})`}
+                        value={annualMaintenance}
+                        onChange={(val) => {
+                          setAnnualMaintenance(val);
+                          setSelectedPrinterId('custom');
+                        }}
+                        prefix={currency}
+                        step="5"
+                      />
+                      <NumberField
+                        label="Vida útil de la impresora (años)"
+                        value={printerLifespanYears}
+                        onChange={setPrinterLifespanYears}
+                        min={0.5}
+                        step="0.5"
+                        suffix="años"
+                      />
+
+                      <NumberField
+                        label="Uptime / Disponibilidad (%)"
+                        value={uptimePercent}
+                        onChange={setUptimePercent}
+                        min={1}
+                        max={100}
+                        step="5"
+                        suffix="%"
+                      />
+                      <NumberField
+                        label="Consumo de Energía (W)"
+                        value={powerWatts}
+                        onChange={(val) => {
+                          setPowerWatts(val);
+                          setSelectedPrinterId('custom');
+                        }}
+                        suffix="W"
+                        step="10"
+                      />
+                      <NumberField
+                        label={`Tarifa Eléctrica (${currency}/kWh)`}
+                        value={electricityRate}
+                        onChange={setElectricityRate}
+                        prefix={currency}
+                        suffix="kWh"
+                        step="0.01"
+                      />
+                    </div>
+
+                    {/* Caja de Sólo Lectura con "Métricas Calculadas" */}
+                    <div className="p-5 rounded-xl bg-gray-50 dark:bg-slate-950/70 border border-amber-200/80 dark:border-amber-500/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                          Métricas Calculadas (Sólo Lectura • Alimentan el Costo de Desgaste)
+                        </span>
+                        <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
+                          Vida operativa: {Math.round(advancedMetrics.lifetimeHours)} hrs
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-gray-800">
+                          <span className="text-[11px] text-gray-500 dark:text-slate-400 block">
+                            Inversión Total
+                          </span>
+                          <span className="text-base font-extrabold font-mono text-gray-900 dark:text-white">
+                            {currency}
+                            {advancedMetrics.totalInvestment.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-gray-800">
+                          <span className="text-[11px] text-gray-500 dark:text-slate-400 block">
+                            Tasa de Depreciación
+                          </span>
+                          <span className="text-base font-extrabold font-mono text-gray-900 dark:text-white">
+                            {currency}
+                            {advancedMetrics.depreciationRatePerHr.toFixed(3)}/hr
+                          </span>
+                        </div>
+                        <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-gray-800">
+                          <span className="text-[11px] text-gray-500 dark:text-slate-400 block">
+                            Tasa de Electricidad
+                          </span>
+                          <span className="text-base font-extrabold font-mono text-sky-600 dark:text-sky-400">
+                            {currency}
+                            {advancedMetrics.electricityRatePerHr.toFixed(3)}/hr
+                          </span>
+                        </div>
+                        <div className="p-3 rounded-lg bg-amber-50/70 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-500/40">
+                          <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 block">
+                            Tarifa Máquina Total
+                          </span>
+                          <span className="text-base font-extrabold font-mono text-amber-700 dark:text-amber-400">
+                            {currency}
+                            {advancedMetrics.totalMachineRatePerHr.toFixed(2)}/hr
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </section>
 
-            {/* COLUMNA DERECHA: RESULTADOS, PRECIOS Y EXPORTACIÓN A PDF */}
-            <aside className="lg:col-span-5 space-y-8">
-              {/* Desglose de Costos */}
-              <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-gray-200 dark:border-gray-800 p-6 sm:p-8 shadow-sm hover:shadow-md transition-all duration-200">
-                <div className="flex items-start justify-between gap-4 mb-6">
-                  <div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block mb-0.5">
-                      {partName || 'Pieza sin nombre'}
+            {/* COLUMNA DERECHA (RESULTADOS - 4 COLUMNAS, STICKY TOP-6) */}
+            <aside className="lg:col-span-4 lg:sticky lg:top-6 space-y-6">
+              {/* Tarjeta Principal de Estrategia de Precios + Hero Box + Slider + PDF */}
+              <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-gray-200 dark:border-gray-800 p-6 shadow-sm hover:shadow-md transition-all duration-200 space-y-5">
+                {/* HERO BOX con Precio Sugerido en text-4xl */}
+                <div className="rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-5 shadow-md">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">
+                      Precio de Venta Sugerido ({calculations.activeTier.marginPct}% Margen Bruto)
                     </span>
-                    <h2 className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">
-                      Desglose de Costos
-                    </h2>
-                  </div>
-                  <div className="text-right">
-                    <span className="px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-blue-50 text-blue-700 border border-blue-200/80 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30 inline-block mb-1">
-                      {technology}
-                    </span>
-                    <span className="text-[11px] text-gray-500 dark:text-slate-400 font-mono block">
-                      {activePrinterObj ? activePrinterObj.name : 'Impresora Personalizada'}
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-white/15 text-white">
+                      {calculations.qty > 1 ? `${calculations.qty} uds` : '1 ud'}
                     </span>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center my-6 bg-gray-50/80 dark:bg-slate-950/60 p-5 rounded-xl border border-gray-200/80 dark:border-gray-800">
-                  <div className="sm:col-span-5 flex justify-center">
-                    <CostDoughnutChart
-                      items={chartItems}
-                      total={calculations.totalBaseCost}
-                      currency={currency}
-                      isDark={darkMode}
-                    />
+                  <div className="text-4xl font-extrabold font-mono tracking-tight my-1.5">
+                    {currency}
+                    {calculations.activeTier.finalPrice.toFixed(2)}
                   </div>
-                  <div className="sm:col-span-7 text-center sm:text-left">
-                    <p className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-slate-400">
-                      Costo Total de Producción
-                    </p>
-                    <div className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-emerald-600 dark:text-emerald-400 my-1.5">
-                      {currency}
-                      {calculations.totalBaseCost.toFixed(2)}
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed">
-                      Costo base de fabricar 1 unidad antes de margen e impuestos.
-                    </p>
-                  </div>
-                </div>
 
-                <div className="space-y-2 text-sm">
-                  {chartItems.map((item, i) => {
-                    const pct =
-                      calculations.totalBaseCost > 0
-                        ? Math.round((item.value / calculations.totalBaseCost) * 100)
-                        : 0;
-                    return (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50/80 dark:hover:bg-slate-800/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: item.color }}
-                          />
-                          <span className="font-medium text-gray-700 dark:text-slate-300">
-                            {item.shortLabel}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 font-mono">
-                          <span className="text-xs text-gray-400 dark:text-slate-500">{pct}%</span>
-                          <span className="font-semibold text-gray-900 dark:text-white">
-                            {currency}
-                            {item.value.toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Estrategia de Precios + Opciones Granulares de Exportación a PDF */}
-              <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-gray-200 dark:border-gray-800 p-6 sm:p-8 shadow-sm hover:shadow-md transition-all duration-200">
-                <h2 className="text-lg font-bold tracking-tight text-gray-900 dark:text-white mb-1">
-                  Estrategia de Precios
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-slate-400 mb-6">
-                  Precios sugeridos incluyendo margen de beneficio + {taxPercent}% de IVA
-                </p>
-
-                <div className="grid grid-cols-2 gap-3.5 mb-6">
-                  {[
-                    { key: '25', label: 'Competitivo', badge: '+25%' },
-                    { key: '40', label: 'Estándar', badge: '+40%' },
-                    { key: '60', label: 'Premium', badge: '+60%' },
-                    { key: '80', label: 'Lujo', badge: '+80%' },
-                  ].map((tier) => {
-                    const data = calculations.tiers[tier.key];
-                    const active = selectedTier === tier.key;
-                    return (
-                      <button
-                        key={tier.key}
-                        type="button"
-                        onClick={() => setSelectedTier(tier.key)}
-                        className={`text-left p-4 rounded-xl border transition-all duration-200 ${
-                          active
-                            ? 'border-emerald-500 bg-emerald-50/50 dark:border-emerald-500/80 dark:bg-emerald-950/20 shadow-sm ring-2 ring-emerald-500/20'
-                            : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300 dark:border-gray-800 dark:bg-slate-950/40 dark:hover:border-gray-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">
-                            {tier.label}
-                          </span>
-                          <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-100/80 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
-                            {tier.badge}
-                          </span>
-                        </div>
-                        <div className="text-xl font-extrabold font-mono tracking-tight text-gray-900 dark:text-white">
-                          {currency}
-                          {data.finalPrice.toFixed(2)}
-                        </div>
-                        <div className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
-                          Ganancia:{' '}
-                          <span className="text-emerald-600 dark:text-emerald-400 font-mono font-semibold">
-                            +{currency}
-                            {data.profit.toFixed(2)}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-
-                  {/* Personalizado */}
-                  <div
-                    onClick={() => setSelectedTier('custom')}
-                    className={`col-span-2 p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
-                      selectedTier === 'custom'
-                        ? 'border-emerald-500 bg-emerald-50/50 dark:border-emerald-500/80 dark:bg-emerald-950/20 shadow-sm ring-2 ring-emerald-500/20'
-                        : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300 dark:border-gray-800 dark:bg-slate-950/40 dark:hover:border-gray-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-xs font-semibold text-gray-700 dark:text-slate-200">
-                          Personalizado (%)
-                        </span>
-                        <input
-                          type="number"
-                          value={customMargin}
-                          onChange={(e) => {
-                            setCustomMargin(parseFloat(e.target.value) || 0);
-                            setSelectedTier('custom');
-                          }}
-                          className="w-20 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-mono text-emerald-700 dark:text-emerald-400 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
-                        />
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-extrabold font-mono tracking-tight text-gray-900 dark:text-white">
-                          {currency}
-                          {calculations.tiers.custom.finalPrice.toFixed(2)}
-                        </div>
-                        <div className="text-[11px] text-gray-500 dark:text-slate-400">
-                          Ganancia:{' '}
-                          <span className="text-emerald-600 dark:text-emerald-400 font-mono font-semibold">
-                            +{currency}
-                            {calculations.tiers.custom.profit.toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Resumen Final con jerarquía tipográfica destacada */}
-                <div className="rounded-xl bg-gray-50/90 dark:bg-slate-950/70 p-5 border border-emerald-200/80 dark:border-emerald-500/30 mb-6">
-                  <div className="flex justify-between text-xs font-medium text-gray-600 dark:text-slate-300 mb-1.5">
-                    <span>Subtotal sin IVA (+{calculations.activeTier.marginPct}%):</span>
-                    <span className="font-mono font-semibold text-gray-900 dark:text-white">
-                      {currency}
-                      {calculations.activeTier.subtotal.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs font-medium text-gray-600 dark:text-slate-300 mb-3.5 pb-3.5 border-b border-gray-200/80 dark:border-gray-800">
-                    <span>Impuestos / IVA ({taxPercent}%):</span>
-                    <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold">
-                      +{currency}
-                      {calculations.activeTier.taxAmount.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="grid grid-cols-2 gap-2 pt-3 mt-2 border-t border-white/15 text-xs">
                     <div>
-                      <span className="text-xs uppercase tracking-wider font-bold text-emerald-700 dark:text-emerald-400 block">
-                        Precio Final de Venta
+                      <span className="text-emerald-100/80 block text-[10px]">
+                        Sin IVA (Costo / 1-M)
                       </span>
-                      <span className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 block">
-                        Ganancia neta: {currency}
+                      <span className="font-mono font-bold">
+                        {currency}
+                        {calculations.activeTier.subtotal.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-emerald-100/80 block text-[10px]">
+                        Ganancia Bruta (+IVA {taxPercent}%)
+                      </span>
+                      <span className="font-mono font-bold text-emerald-200">
+                        +{currency}
                         {calculations.activeTier.profit.toFixed(2)}
                       </span>
                     </div>
-                    <div className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-gray-900 dark:text-white">
-                      {currency}
-                      {calculations.activeTier.finalPrice.toFixed(2)}
+                  </div>
+
+                  {calculations.qty > 1 && (
+                    <div className="mt-2.5 pt-2 border-t border-white/15 flex justify-between text-[11px] font-mono text-emerald-100">
+                      <span>Precio final por unidad:</span>
+                      <strong>
+                        {currency}
+                        {calculations.activeTier.unitFinalPrice.toFixed(2)} / ud
+                      </strong>
                     </div>
+                  )}
+                </div>
+
+                {/* Tarjetas Rápidas Seleccionables para los Márgenes */}
+                <div>
+                  <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-2.5">
+                    Márgenes Brutos Corporativos (Costo / (1 - Margen))
+                  </label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {[
+                      { key: '25', label: 'Competitivo', badge: '25%' },
+                      { key: '40', label: 'Estándar', badge: '40%' },
+                      { key: '60', label: 'Premium', badge: '60%' },
+                      { key: '80', label: 'Lujo', badge: '80%' },
+                    ].map((tier) => {
+                      const data = calculations.tiers[tier.key];
+                      const active = selectedTier === tier.key;
+                      return (
+                        <button
+                          key={tier.key}
+                          type="button"
+                          onClick={() => setSelectedTier(tier.key)}
+                          className={`text-left p-3 rounded-xl border transition-all duration-200 ${
+                            active
+                              ? 'border-emerald-500 bg-emerald-50/60 dark:border-emerald-500/80 dark:bg-emerald-950/25 shadow-sm ring-2 ring-emerald-500/20'
+                              : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50 dark:border-gray-800 dark:bg-slate-950/40'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">
+                              {tier.label}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
+                              {tier.badge}
+                            </span>
+                          </div>
+                          <div className="text-base font-extrabold font-mono text-gray-900 dark:text-white">
+                            {currency}
+                            {data.finalPrice.toFixed(2)}
+                          </div>
+                          <div className="text-[10px] text-gray-500 dark:text-slate-400 font-mono">
+                            +{currency}
+                            {data.profit.toFixed(2)}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* CHECKLIST GRANULAR PARA OCULTAR / MOSTRAR GASTOS EN EL PDF */}
-                <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-gray-50/70 dark:bg-slate-950/50 border border-gray-200/80 dark:border-gray-800">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-semibold tracking-tight text-gray-800 dark:text-white">
+                {/* Slider (<input type="range">) para Margen Personalizado */}
+                <div className="p-3.5 rounded-xl bg-gray-50/80 dark:bg-slate-950/50 border border-gray-200/80 dark:border-gray-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">
+                      Margen Bruto Personalizado
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="99"
+                        step="1"
+                        value={activeMarginSliderValue}
+                        onChange={(e) => {
+                          const val = Math.min(99, Math.max(0, parseFloat(e.target.value) || 0));
+                          setCustomMargin(val);
+                          setSelectedTier('custom');
+                        }}
+                        className="w-16 rounded-md bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400 text-right focus:outline-none"
+                      />
+                      <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                        %
+                      </span>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="95"
+                    step="1"
+                    value={Math.min(95, activeMarginSliderValue)}
+                    onChange={(e) => {
+                      setCustomMargin(Number(e.target.value));
+                      setSelectedTier('custom');
+                    }}
+                    className="w-full h-2 bg-gray-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                  />
+                  <div className="flex justify-between text-[10px] font-mono text-gray-400 mt-1">
+                    <span>0%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                    <span>75%</span>
+                    <span>95%</span>
+                  </div>
+                </div>
+
+                {/* Opciones de conceptos para el PDF + Botón Exportar a PDF */}
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-xl bg-gray-50/70 dark:bg-slate-950/50 border border-gray-200/80 dark:border-gray-800">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-gray-800 dark:text-white">
                         Conceptos visibles en el PDF
                       </span>
                       <div className="flex items-center gap-2 text-[11px]">
@@ -1761,34 +2459,26 @@ export default function CalculadoraCostos3D() {
                           onClick={() => setAllPdfSettings(false)}
                           className="text-gray-500 dark:text-slate-400 hover:underline font-medium"
                         >
-                          Ninguno (Solo Total)
+                          Ninguno
                         </button>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-1 gap-2.5">
+                    <div className="grid grid-cols-1 gap-1.5">
                       {pdfChecklistOptions.map((opt) => (
                         <label
                           key={opt.key}
-                          className="flex items-center gap-2.5 text-xs font-medium text-gray-700 dark:text-slate-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-white transition-colors"
+                          className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300 cursor-pointer select-none"
                         >
                           <input
                             type="checkbox"
                             checked={pdfSettings[opt.key]}
                             onChange={() => togglePdfSetting(opt.key)}
-                            className="w-4 h-4 accent-emerald-600 rounded cursor-pointer shrink-0"
+                            className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer shrink-0"
                           />
-                          <span>{opt.label}</span>
+                          <span className="truncate">{opt.label}</span>
                         </label>
                       ))}
                     </div>
-                    <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-3 pt-2.5 border-t border-gray-200/60 dark:border-gray-800 leading-relaxed">
-                      Los conceptos desmarcados se agrupan automáticamente bajo{' '}
-                      <strong className="font-semibold text-gray-700 dark:text-slate-200">
-                        "Costos Operativos, Gestión y Extras"
-                      </strong>{' '}
-                      para cuadrar el Subtotal exacto sin revelar tus márgenes internos.
-                    </p>
                   </div>
 
                   <button
@@ -1800,6 +2490,70 @@ export default function CalculadoraCostos3D() {
                     <span className="text-base">📄</span>
                     <span>{isExportingPdf ? 'Generando PDF...' : 'Exportar a PDF'}</span>
                   </button>
+                </div>
+              </div>
+
+              {/* Tarjeta "Desglose de Costos" con gráfico circular y lista de porcentajes al lado */}
+              <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-gray-200 dark:border-gray-800 p-6 shadow-sm hover:shadow-md transition-all duration-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-base font-bold tracking-tight text-gray-900 dark:text-white">
+                      Desglose de Costos
+                    </h2>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">
+                      Costo Base Total:{' '}
+                      <strong className="font-mono text-emerald-600 dark:text-emerald-400">
+                        {currency}
+                        {calculations.totalBaseCost.toFixed(2)}
+                      </strong>
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-semibold bg-blue-50 text-blue-700 border border-blue-200/80 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30">
+                    {technology}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-center gap-4">
+                  <CostDoughnutChart
+                    items={chartItems}
+                    total={calculations.totalBaseCost}
+                    currency={currency}
+                    isDark={darkMode}
+                  />
+
+                  <div className="flex-1 w-full space-y-2 text-xs">
+                    {chartItems.map((item, i) => {
+                      const pct =
+                        calculations.totalBaseCost > 0
+                          ? Math.round((item.value / calculations.totalBaseCost) * 100)
+                          : 0;
+                      return (
+                        <div
+                          key={i}
+                          className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-gray-50/70 dark:bg-slate-950/40"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <span className="font-medium text-gray-700 dark:text-slate-300 truncate">
+                              {item.shortLabel}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 font-mono shrink-0">
+                            <span className="text-[11px] text-gray-400 dark:text-slate-500">
+                              {pct}%
+                            </span>
+                            <span className="font-semibold text-gray-900 dark:text-white">
+                              {currency}
+                              {item.value.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </aside>
@@ -1821,7 +2575,6 @@ export default function CalculadoraCostos3D() {
               </span>
             </div>
 
-            {/* Contenedor exacto capturado por html2canvas (ref={pdfContainerRef}) */}
             <div
               id="pdf-budget-container"
               ref={pdfContainerRef}
@@ -1877,7 +2630,7 @@ export default function CalculadoraCostos3D() {
                 </div>
               </div>
 
-              {/* Render Destacado Centrado Arriba de los Detalles (si el usuario subió imagen) */}
+              {/* Render Destacado si el usuario subió imagen */}
               {modelImage && (
                 <div
                   style={{
@@ -1951,7 +2704,8 @@ export default function CalculadoraCostos3D() {
                         marginTop: '2px',
                       }}
                     >
-                      {partName || 'Pieza 3D'}
+                      {partName || 'Pieza 3D'} (Lote: {calculations.qty}{' '}
+                      {calculations.qty === 1 ? 'unidad' : 'unidades'})
                     </div>
                   </div>
                   <div>
@@ -1969,7 +2723,7 @@ export default function CalculadoraCostos3D() {
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                      Tiempo de Impresión Estimado
+                      Tiempo de Impresión Estimado (Lote)
                     </div>
                     <div
                       style={{
@@ -1980,29 +2734,31 @@ export default function CalculadoraCostos3D() {
                         marginTop: '2px',
                       }}
                     >
-                      {printHours}h {printMinutes}min ({calculations.totalPrintHours.toFixed(1)} hrs)
+                      {calculations.totalPrintHours.toFixed(1)} hrs ({printHours}h {printMinutes}m /
+                      ud)
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                      Material Estimado de Fabricación
+                      Materiales Estimados ({materialsList.length})
                     </div>
                     <div
                       style={{
-                        fontSize: '15px',
+                        fontSize: '14px',
                         fontWeight: 700,
                         color: '#059669',
                         fontFamily: 'monospace',
                         marginTop: '2px',
                       }}
                     >
-                      {materialUsed} {unitSuffix}
+                      {calculations.totalMaterialWeight} {unitSuffix} (
+                      {materialsList.map((m) => m.name).join(' + ')})
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* 2. Renderizado en el PDF: Desglose de Conceptos Incluidos + Costos Operativos Agrupados */}
+              {/* Desglose de Conceptos Incluidos + Costos Operativos Agrupados */}
               <div
                 style={{
                   backgroundColor: '#f9fafb',
@@ -2040,7 +2796,7 @@ export default function CalculadoraCostos3D() {
                       currency={currency}
                       isDark={false}
                       canvasRef={pdfChartCanvasRef}
-                      centerLabel="SUBTOTAL"
+                      centerLabel="PRECIO VENTA"
                     />
                     {costosOcultosTotal > 0 && (
                       <div
@@ -2068,7 +2824,6 @@ export default function CalculadoraCostos3D() {
                   </div>
 
                   <div className="md:col-span-8 space-y-2 text-xs">
-                    {/* Conceptos visibles marcados por el usuario */}
                     {visiblePdfCostItems.map((item) => (
                       <div
                         key={item.key}
@@ -2076,7 +2831,12 @@ export default function CalculadoraCostos3D() {
                         className="flex justify-between items-center"
                       >
                         <span
-                          style={{ color: '#4b5563', display: 'flex', alignItems: 'center', gap: '8px' }}
+                          style={{
+                            color: '#4b5563',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                          }}
                         >
                           <span
                             style={{
@@ -2096,7 +2856,6 @@ export default function CalculadoraCostos3D() {
                       </div>
                     ))}
 
-                    {/* Ganancia / Margen visible SOLO si su checkbox está marcado */}
                     {pdfSettings.showProfitMargin && (
                       <div
                         style={{
@@ -2125,7 +2884,7 @@ export default function CalculadoraCostos3D() {
                             }}
                           />
                           <span>
-                            Desglose de Ganancia / Margen (+{calculations.activeTier.marginPct}%)
+                            Margen Bruto de Comercialización ({calculations.activeTier.marginPct}%)
                           </span>
                         </span>
                         <strong style={{ color: '#059669', fontFamily: 'monospace' }}>
@@ -2134,7 +2893,6 @@ export default function CalculadoraCostos3D() {
                       </div>
                     )}
 
-                    {/* Fila Agrupada de Costos Ocultos: aparece automáticamente cuando costosOcultosTotal > 0 */}
                     {costosOcultosTotal > 0 && (
                       <div
                         style={{
@@ -2175,7 +2933,7 @@ export default function CalculadoraCostos3D() {
                 </div>
               </div>
 
-              {/* Resumen del Precio Final a Cobrar (Siempre permanece constante) */}
+              {/* Resumen del Precio Final a Cobrar */}
               <div
                 style={{
                   backgroundColor: '#f0fdf4',
@@ -2194,7 +2952,10 @@ export default function CalculadoraCostos3D() {
                   }}
                   className="flex justify-between"
                 >
-                  <span>Subtotal del Servicio de Impresión 3D</span>
+                  <span>
+                    Precio de Venta antes de Impuestos (Lote {calculations.qty}{' '}
+                    {calculations.qty === 1 ? 'ud' : 'uds'})
+                  </span>
                   <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#111827' }}>
                     {formatMoney(calculations.activeTier.subtotal)}
                   </span>
@@ -2230,6 +2991,9 @@ export default function CalculadoraCostos3D() {
                     </span>
                     <span style={{ color: '#4b5563', fontSize: '11px' }}>
                       Importe total a pagar (Impuestos incluidos)
+                      {calculations.qty > 1
+                        ? ` • ${formatMoney(calculations.activeTier.unitFinalPrice)} por unidad`
+                        : ''}
                     </span>
                   </div>
                   <div
@@ -2255,7 +3019,7 @@ export default function CalculadoraCostos3D() {
                   paddingTop: '12px',
                 }}
               >
-                Presupuesto generado por 3D Print Cost Calculator • Documento formal listo para
+                Presupuesto generado por 3D Print Cost Calculator PRO • Documento formal listo para
                 impresión.
               </div>
             </div>
@@ -2271,6 +3035,17 @@ export default function CalculadoraCostos3D() {
           onSelectProfile={handleSelectPrinterProfile}
           onAddProfile={handleAddPrinterProfile}
           onDeleteProfile={handleDeletePrinterProfile}
+        />
+
+        {/* Modal Inventario de Filamentos */}
+        <FilamentInventoryModal
+          isOpen={isFilamentModalOpen}
+          onClose={() => setIsFilamentModalOpen(false)}
+          filaments={filamentInventory}
+          currency={currency}
+          onAddFilament={handleAddFilamentInventory}
+          onDeleteFilament={handleDeleteFilamentInventory}
+          onUseFilament={(fil) => handleAddMaterialRow(fil)}
         />
       </div>
     </div>
