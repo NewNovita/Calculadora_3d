@@ -837,13 +837,15 @@ export default function CalculadoraCostos3D() {
   const [printMinutes, setPrintMinutes] = useState(30);
   const [laborMinutes, setLaborMinutes] = useState(20);
 
-  // 4. Extras con Botón Desplegable "Add item ▼" (Hardware & Packaging) + Impuestos
+  // 4. Extras con Botón Desplegable "Add item ▼" (Hardware & Packaging) + IGV
   const [extrasList, setExtrasList] = useState([
     { id: 1, categoria: 'Hardware', nombre: 'Tornillería e Insertos M3', costo: 0.8 },
     { id: 2, categoria: 'Packaging', nombre: 'Caja de Embalaje', costo: 0.7 },
   ]);
   const [isAddExtraMenuOpen, setIsAddExtraMenuOpen] = useState(false);
-  const [taxPercent, setTaxPercent] = useState(16);
+  // IGV: Toggle para aplicar Impuesto General a las Ventas (18%)
+  const [applyIGV, setApplyIGV] = useState(false);
+  const taxPercent = applyIGV ? 18 : 0;
 
   // Cerrar menú desplegable "Add item ▼" al hacer clic fuera
   useEffect(() => {
@@ -867,6 +869,12 @@ export default function CalculadoraCostos3D() {
   const [powerWatts, setPowerWatts] = useState(150); // Consumo de Energía (W)
   const [electricityRate, setElectricityRate] = useState(0.18); // Tarifa Eléctrica ($/kWh)
   const [bufferFactor, setBufferFactor] = useState(1.3); // Factor de Amortiguación (ej. 1.3)
+  const [scrapRate, setScrapRate] = useState(0); // % de Merma / Tasa de Fallo (0-100)
+  const [unexpectedCosts, setUnexpectedCosts] = useState(0); // Gastos Imprevistos ($)
+
+  // Descuento por Volumen y Folio de Cotización
+  const [volumeDiscountPct, setVolumeDiscountPct] = useState(0); // % de descuento por volumen
+  const [folioNumber, setFolioNumber] = useState('COT-3D-001'); // Número de folio editable
 
   // Estrategia de Precios (Margen Bruto Real) & Opciones PDF
   const [selectedTier, setSelectedTier] = useState('40');
@@ -1039,13 +1047,15 @@ export default function CalculadoraCostos3D() {
 
     const projectPayload = {
       app: '3DPrintCostCalculatorPro',
-      version: '5.0',
+      version: '6.0',
       exportedAt: new Date().toISOString(),
       data: {
         partName: rawName,
         technology,
         currency,
         batchQuantity,
+        volumeDiscountPct,
+        folioNumber,
         selectedPrinterId,
         materialsList,
         printHours,
@@ -1060,14 +1070,17 @@ export default function CalculadoraCostos3D() {
         powerWatts,
         electricityRate,
         bufferFactor,
+        scrapRate,
+        unexpectedCosts,
         extrasList,
-        taxPercent,
+        applyIGV,
         selectedTier,
         customMarginInput: customMargin,
         pdfSettings,
         modelImageDataUrl: modelImage,
       },
     };
+
 
     const blob = new Blob([JSON.stringify(projectPayload, null, 2)], {
       type: 'application/json',
@@ -1134,6 +1147,10 @@ export default function CalculadoraCostos3D() {
         if (data.powerWatts !== undefined) setPowerWatts(Number(data.powerWatts));
         if (data.electricityRate !== undefined) setElectricityRate(Number(data.electricityRate));
         if (data.bufferFactor !== undefined) setBufferFactor(Number(data.bufferFactor));
+        if (data.scrapRate !== undefined) setScrapRate(Math.max(0, Number(data.scrapRate) || 0));
+        if (data.unexpectedCosts !== undefined) setUnexpectedCosts(Math.max(0, Number(data.unexpectedCosts) || 0));
+        if (data.volumeDiscountPct !== undefined) setVolumeDiscountPct(Math.max(0, Number(data.volumeDiscountPct) || 0));
+        if (data.folioNumber) setFolioNumber(String(data.folioNumber));
 
         if (Array.isArray(data.extrasList)) {
           setExtrasList(
@@ -1145,7 +1162,9 @@ export default function CalculadoraCostos3D() {
             }))
           );
         }
-        if (data.taxPercent !== undefined) setTaxPercent(Number(data.taxPercent));
+        // Restaurar IGV (applyIGV reemplaza taxPercent)
+        if (data.applyIGV !== undefined) setApplyIGV(Boolean(data.applyIGV));
+        else if (data.taxPercent !== undefined) setApplyIGV(Number(data.taxPercent) > 0);
         if (data.selectedTier) setSelectedTier(String(data.selectedTier));
         if (data.customMarginInput !== undefined)
           setCustomMargin(Math.min(99, Math.max(0, Number(data.customMarginInput) || 0)));
@@ -1153,6 +1172,7 @@ export default function CalculadoraCostos3D() {
           setPdfSettings({ ...DEFAULT_PDF_SETTINGS, ...data.pdfSettings });
         }
         setModelImage(data.modelImageDataUrl || null);
+
 
         showToast(
           'Proyecto cargado',
@@ -1256,22 +1276,37 @@ export default function CalculadoraCostos3D() {
     const totalExtrasCost = unitExtrasCost * qty;
     const costExtras = totalExtrasCost;
 
-    // Costo Total de Producción
-    const totalBaseCost = costMaterial + costLabor + costWear + costElectricity + totalExtrasCost;
+    // Merma / Tasa de Fallo (% sobre el costo de material)
+    const safeScrapRate = Math.min(100, Math.max(0, Number(scrapRate) || 0));
+    const costScrap = costMaterial * (safeScrapRate / 100);
+
+    // Gastos Imprevistos (monto fijo adicional al lote)
+    const safeUnexpected = Math.max(0, Number(unexpectedCosts) || 0);
+
+    // Costo Total de Producción (incluye merma e imprevistos)
+    const totalBaseCost =
+      costMaterial + costLabor + costWear + costElectricity + totalExtrasCost + costScrap + safeUnexpected;
     const unitBaseCost = totalBaseCost / qty;
 
-    // 1. Corrección de Fórmula de Márgenes (Verdadero Margen Bruto / Gross Margin):
+    // Corrección de Fórmula de Márgenes (Verdadero Margen Bruto / Gross Margin):
     // Precio de Venta = Costo Total / (1 - Porcentaje de Margen)
-    // Manejo seguro de división por cero cuando el margen >= 100%
+    // Descuento por Volumen aplicado al subtotal ANTES del IGV
+    const safeDiscountPct = Math.min(100, Math.max(0, Number(volumeDiscountPct) || 0));
+
     const computeTier = (marginPct) => {
       const clampedPct = Math.min(99.9, Math.max(0, Number(marginPct) || 0));
       const marginDecimal = clampedPct / 100;
       const denominator = 1 - marginDecimal;
 
-      const subtotal =
+      const subtotalBeforeDiscount =
         denominator > 0.0001 ? totalBaseCost / denominator : totalBaseCost * 100;
+
+      // Descuento por volumen sobre el subtotal (precio de venta sin IGV)
+      const discountAmount = subtotalBeforeDiscount * (safeDiscountPct / 100);
+      const subtotal = subtotalBeforeDiscount - discountAmount;
+
       const profit = Math.max(0, subtotal - totalBaseCost);
-      // El impuesto se aplica DESPUÉS de calcular el Precio de Venta (subtotal)
+      // El IGV se aplica DESPUÉS de calcular el Precio de Venta con descuento
       const taxAmount = subtotal * (Math.max(0, taxPercent) / 100);
       const finalPrice = subtotal + taxAmount;
       const unitFinalPrice = finalPrice / qty;
@@ -1281,6 +1316,7 @@ export default function CalculadoraCostos3D() {
         marginPct: clampedPct,
         profit,
         subtotal,
+        discountAmount,
         taxAmount,
         finalPrice,
         unitFinalPrice,
@@ -1310,6 +1346,8 @@ export default function CalculadoraCostos3D() {
       costElectricity,
       costExtras,
       totalExtrasCost,
+      costScrap,
+      safeUnexpected,
       totalBaseCost,
       unitBaseCost,
       tiers,
@@ -1329,6 +1367,9 @@ export default function CalculadoraCostos3D() {
     taxPercent,
     customMargin,
     selectedTier,
+    scrapRate,
+    unexpectedCosts,
+    volumeDiscountPct,
   ]);
 
   const isFDM = technology === 'FDM';
@@ -1404,6 +1445,8 @@ export default function CalculadoraCostos3D() {
     if (!pdfSettings.showElectricity) totalOculto += calculations.costElectricity;
     if (!pdfSettings.showExtras) totalOculto += calculations.totalExtrasCost;
     if (!pdfSettings.showProfitMargin) totalOculto += calculations.activeTier.profit;
+    // Merma e imprevistos siempre se agrupan como costos internos (no se muestran al cliente)
+    totalOculto += calculations.costScrap + calculations.safeUnexpected;
     return totalOculto;
   }, [pdfSettings, calculations]);
 
@@ -1615,96 +1658,7 @@ export default function CalculadoraCostos3D() {
                 className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200/80 text-gray-800 border border-gray-200 dark:bg-slate-800/90 dark:hover:bg-slate-800 dark:text-slate-100 dark:border-gray-700 transition-colors duration-200"
                 title={darkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
               >
-                <span>{darkMode ? '☀️ Modo Claro' : '🌙 Modo Oscuro'}</span>
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* 2. Layout de Dos Columnas (Estilo Dashboard: 8 cols Izquierda / 4 cols Derecha Sticky) */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-12">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* COLUMNA IZQUIERDA (INPUTS - 8 COLUMNAS) */}
-            <section className="lg:col-span-8 space-y-6">
-              {/* 1. Proyecto, Lote (Batch) y Render 3D */}
-              <SectionCard
-                step="1"
-                title="Detalles del Proyecto y Lote de Producción"
-                subtitle="Nombre de la pieza, tecnología, cantidad del lote (Batch) y render del modelo 3D"
-                badge={
-                  calculations.qty > 1 ? `Lote: ${calculations.qty} uds` : '1 Unidad'
-                }
-                accent="blue"
-              >
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 mb-6">
-                  <div className="sm:col-span-5">
-                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-1.5">
-                      Nombre de la pieza / proyecto
-                    </label>
-                    <input
-                      type="text"
-                      value={partName}
-                      onChange={(e) => setPartName(e.target.value)}
-                      placeholder="Ej. Soporte Articulado Pro"
-                      className="w-full rounded-lg bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-gray-700 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all duration-200"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <NumberField
-                      label="Cantidad a producir (Batch)"
-                      value={batchQuantity}
-                      onChange={(val) => setBatchQuantity(Math.max(1, Math.round(val || 1)))}
-                      min={1}
-                      step="1"
-                      suffix="uds"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-4">
-                    <label className="block text-xs font-semibold tracking-tight text-gray-700 dark:text-slate-300 mb-1.5">
-                      Tecnología de impresión
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5 p-1 bg-gray-100/80 dark:bg-slate-900/60 rounded-lg border border-gray-200/80 dark:border-gray-800">
-                      <button
-                        type="button"
-                        onClick={() => setTechnology('FDM')}
-                        className={`py-2 px-2.5 rounded-md text-xs font-semibold transition-all duration-200 ${
-                          isFDM
-                            ? 'bg-emerald-600 text-white shadow-sm'
-                            : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
-                        }`}
-                      >
-                        FDM (Filamento)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTechnology('SLA')}
-                        className={`py-2 px-2.5 rounded-md text-xs font-semibold transition-all duration-200 ${
-                          !isFDM
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
-                        }`}
-                      >
-                        SLA (Resina)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Vista Previa del Render 3D */}
-                <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-xl bg-gray-50/70 dark:bg-slate-900/40 border border-dashed border-gray-200 dark:border-gray-800">
-                  <div className="w-20 h-20 rounded-xl bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
-                    {modelImage ? (
-                      <img
-                        src={modelImage}
-                        alt="Thumbnail del modelo 3D"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-[11px] font-medium text-gray-400 dark:text-slate-500 text-center px-2">
-                        Sin render
-                      </span>
+                
                     )}
                   </div>
 
@@ -2104,21 +2058,41 @@ export default function CalculadoraCostos3D() {
                       </div>
                     )}
                   </div>
-
-                  {/* Impuestos / IVA (%) */}
-                  <div className="pt-3 border-t border-gray-100 dark:border-gray-800 max-w-xs">
-                    <NumberField
-                      label="Impuestos / IVA (%) — Aplicado tras el Precio de Venta"
-                      value={taxPercent}
-                      onChange={setTaxPercent}
-                      suffix="%"
-                      step="1"
-                    />
+                  {/* Toggle Aplicar IGV (18%) */}
+                  <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
+                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                      <div className="relative shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={applyIGV}
+                          onChange={(e) => setApplyIGV(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`w-11 h-6 rounded-full transition-colors duration-200 ${
+                            applyIGV ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-slate-700'
+                          }`}
+                        />
+                        <div
+                          className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                            applyIGV ? 'translate-x-5' : ''
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-gray-800 dark:text-slate-100">
+                          Aplicar IGV (18%)
+                        </span>
+                        <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">
+                          {applyIGV
+                            ? `IGV activo: +${formatMoney(calculations.activeTier.taxAmount)}`
+                            : 'IGV desactivado (impuesto = 0)'}
+                        </p>
+                      </div>
+                    </label>
                   </div>
                 </div>
               </SectionCard>
-
-              {/* 5. Panel Colapsable (Acordeón) "Configuración avanzada de producción" */}
               <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
                 <button
                   type="button"
@@ -2179,6 +2153,24 @@ export default function CalculadoraCostos3D() {
                         min={1}
                         step="0.05"
                         hint="Ej. 1.3 para cubrir fallos"
+                      />
+                      <NumberField
+                        label="% de Merma (Tasa de Fallo)"
+                        value={scrapRate}
+                        onChange={(val) => setScrapRate(Math.min(100, Math.max(0, val || 0)))}
+                        min={0}
+                        max={100}
+                        step="0.5"
+                        suffix="%"
+                        hint={scrapRate > 0 ? `Costo merma lote: ${formatMoney(calculations.costScrap)}` : 'Sin merma'}
+                      />
+                      <NumberField
+                        label={`Gastos Imprevistos (${currency})`}
+                        value={unexpectedCosts}
+                        onChange={(val) => setUnexpectedCosts(Math.max(0, val || 0))}
+                        prefix={currency}
+                        step="0.5"
+                        hint="Costos imprevistos de producción"
                       />
 
                       <NumberField
@@ -2308,28 +2300,41 @@ export default function CalculadoraCostos3D() {
                     </span>
                   </div>
 
+                  {/* PRECIO DE VENTA (SIN IGV) â€” NÃšMERO MÃS GRANDE Y DESTACADO */}
                   <div className="text-4xl font-extrabold font-mono tracking-tight my-1.5">
                     {currency}
-                    {calculations.activeTier.finalPrice.toFixed(2)}
+                    {calculations.activeTier.subtotal.toFixed(2)}
+                  </div>
+                  <div className="text-[11px] font-mono text-emerald-100/80 -mt-1 mb-2">
+                    Precio de Venta (SIN IGV)
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-3 mt-2 border-t border-white/15 text-xs">
+                  {/* PRECIO FINAL SECUNDARIO CON IGV */}
+                  <div className="px-3.5 py-2 rounded-xl bg-white/10 text-xs font-mono flex items-center justify-between mb-2">
+                    <span className="text-emerald-100/90 font-medium">
+                      {applyIGV ? 'Precio Final (Inc. IGV 18%):' : 'Precio Final (IGV no aplicado):'}
+                    </span>
+                    <span className="text-sm font-bold text-white">
+                      {currency}{calculations.activeTier.finalPrice.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-2.5 mt-1 border-t border-white/15 text-xs">
                     <div>
                       <span className="text-emerald-100/80 block text-[10px]">
-                        Sin IVA (Costo / 1-M)
-                      </span>
-                      <span className="font-mono font-bold">
-                        {currency}
-                        {calculations.activeTier.subtotal.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-emerald-100/80 block text-[10px]">
-                        Ganancia Bruta (+IVA {taxPercent}%)
+                        Ganancia Bruta
                       </span>
                       <span className="font-mono font-bold text-emerald-200">
                         +{currency}
                         {calculations.activeTier.profit.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-emerald-100/80 block text-[10px]">
+                        {volumeDiscountPct > 0 ? `Descuento ${volumeDiscountPct}%` : 'Costo Total'}
+                      </span>
+                      <span className="font-mono font-bold">
+                        {volumeDiscountPct > 0 ? `-${currency}${(calculations.activeTier.discountAmount || 0).toFixed(2)}` : `${currency}${calculations.totalBaseCost.toFixed(2)}`}
                       </span>
                     </div>
                   </div>
@@ -2380,8 +2385,13 @@ export default function CalculadoraCostos3D() {
                           </div>
                           <div className="text-base font-extrabold font-mono text-gray-900 dark:text-white">
                             {currency}
-                            {data.finalPrice.toFixed(2)}
+                            {data.subtotal.toFixed(2)}
                           </div>
+                          {applyIGV && (
+                            <div className="text-[10px] text-gray-400 font-mono">
+                              Inc. IGV: {currency}{data.finalPrice.toFixed(2)}
+                            </div>
+                          )}
                           <div className="text-[10px] text-gray-500 dark:text-slate-400 font-mono">
                             +{currency}
                             {data.profit.toFixed(2)}
@@ -2598,19 +2608,6 @@ export default function CalculadoraCostos3D() {
                 className="flex flex-wrap items-start justify-between gap-4"
               >
                 <div>
-                  <span
-                    style={{
-                      color: '#059669',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.1em',
-                      display: 'block',
-                      marginBottom: '4px',
-                    }}
-                  >
-                    Cotización Oficial de Fabricación Aditiva
-                  </span>
                   <h2 style={{ color: '#111827', fontSize: '26px', fontWeight: 800, margin: 0 }}>
                     Presupuesto de Impresión 3D
                   </h2>
@@ -2624,7 +2621,7 @@ export default function CalculadoraCostos3D() {
                       fontSize: '14px',
                     }}
                   >
-                    FOLIO: COT-3D-001
+                    FOLIO: {folioNumber || 'COT-3D-001'}
                   </div>
                   <div style={{ marginTop: '4px' }}>Fecha: {currentDateStr}</div>
                 </div>
@@ -2739,9 +2736,6 @@ export default function CalculadoraCostos3D() {
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                      Materiales Estimados ({materialsList.length})
-                    </div>
                     <div
                       style={{
                         fontSize: '14px',
@@ -2942,68 +2936,33 @@ export default function CalculadoraCostos3D() {
                   padding: '22px 26px',
                 }}
               >
-                <div
-                  style={{
-                    borderBottom: '1px solid #bbf7d0',
-                    paddingBottom: '8px',
-                    marginBottom: '8px',
-                    fontSize: '13px',
-                    color: '#374151',
-                  }}
-                  className="flex justify-between"
-                >
-                  <span>
-                    Precio de Venta antes de Impuestos (Lote {calculations.qty}{' '}
-                    {calculations.qty === 1 ? 'ud' : 'uds'})
-                  </span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#111827' }}>
-                    {formatMoney(calculations.activeTier.subtotal)}
-                  </span>
+                {volumeDiscountPct > 0 && (
+                  <div style={{ borderBottom: '1px solid #bbf7d0', paddingBottom: '8px', marginBottom: '8px', fontSize: '13px', color: '#dc2626' }} className="flex justify-between">
+                    <span>Descuento por Volumen ({volumeDiscountPct}%)</span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>-{formatMoney(calculations.activeTier.discountAmount || 0)}</span>
+                  </div>
+                )}
+                <div style={{ borderBottom: '1px solid #bbf7d0', paddingBottom: '8px', marginBottom: '8px', fontSize: '14px', color: '#111827', fontWeight: 700 }} className="flex justify-between">
+                  <span>Precio de Venta (SIN IGV) {calculations.qty > 1 ? `(Lote ${calculations.qty} uds)` : ''}</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '20px', color: '#059669' }}>{formatMoney(calculations.activeTier.subtotal)}</span>
                 </div>
-                <div
-                  style={{
-                    borderBottom: '1px solid #bbf7d0',
-                    paddingBottom: '12px',
-                    marginBottom: '14px',
-                    fontSize: '13px',
-                    color: '#374151',
-                  }}
-                  className="flex justify-between"
-                >
-                  <span>Impuestos / IVA ({taxPercent}%)</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0284c7' }}>
-                    +{formatMoney(calculations.activeTier.taxAmount)}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-4">
+                {applyIGV && (
+                  <div style={{ borderBottom: '1px solid #bbf7d0', paddingBottom: '8px', marginBottom: '10px', fontSize: '13px', color: '#374151' }} className="flex justify-between">
+                    <span>IGV (18%)</span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0284c7' }}>+{formatMoney(calculations.activeTier.taxAmount)}</span>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
                   <div>
-                    <span
-                      style={{
-                        color: '#047857',
-                        fontSize: '12px',
-                        fontWeight: 800,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
-                        display: 'block',
-                      }}
-                    >
-                      Precio Total Final
+                    <span style={{ color: '#4b5563', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>
+                      {applyIGV ? 'Precio Final (Inc. IGV)' : 'Precio Final'}
                     </span>
-                    <span style={{ color: '#4b5563', fontSize: '11px' }}>
-                      Importe total a pagar (Impuestos incluidos)
-                      {calculations.qty > 1
-                        ? ` • ${formatMoney(calculations.activeTier.unitFinalPrice)} por unidad`
-                        : ''}
+                    <span style={{ color: '#6b7280', fontSize: '11px' }}>
+                      {applyIGV ? 'Importe total con IGV incluido' : 'Importe neto a pagar (sin IGV)'}
+                      {calculations.qty > 1 ? ` • ${formatMoney(calculations.activeTier.unitFinalPrice)} por unidad` : ''}
                     </span>
                   </div>
-                  <div
-                    style={{
-                      color: '#059669',
-                      fontSize: '32px',
-                      fontWeight: 800,
-                      fontFamily: 'monospace',
-                    }}
-                  >
+                  <div style={{ color: '#111827', fontSize: '22px', fontWeight: 800, fontFamily: 'monospace' }}>
                     {formatMoney(calculations.activeTier.finalPrice)}
                   </div>
                 </div>
